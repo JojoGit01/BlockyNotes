@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "BlockyNotes",
+    "slug": "blockynotes",
+    "scheme": "blockynotes",
+    "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.blockynotes.app",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": true
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ]
+  }
+}
