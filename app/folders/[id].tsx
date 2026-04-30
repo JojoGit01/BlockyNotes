@@ -31,6 +31,7 @@ const dayLabel = (isoDate: string) => {
 export default function FolderDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
+  const isPersonalFolder = id === "personal";
   const folder = useFoldersStore((state) => state.folders.find((entry) => entry.id === id));
   const updateFolder = useFoldersStore((state) => state.updateFolder);
   const allNotes = useNotesStore((state) => state.notes);
@@ -39,16 +40,16 @@ export default function FolderDetailsScreen() {
   const notes = useMemo(
     () =>
       [...allNotes]
-        .filter((note) => note.folderId === id && !note.isDeleted)
+        .filter((note) => (isPersonalFolder ? note.folderId === null : note.folderId === id) && !note.isDeleted)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    [allNotes, id]
+    [allNotes, id, isPersonalFolder]
   );
 
   useEffect(() => {
     setFolderName(folder?.name ?? "");
   }, [folder]);
 
-  if (!folder) {
+  if (!folder && !isPersonalFolder) {
     return (
       <ScreenContainer>
         <EmptyState title="Dossier introuvable" description="Ce dossier n'existe plus." />
@@ -59,7 +60,12 @@ export default function FolderDetailsScreen() {
   const handleSaveFolderName = async () => {
     const nextName = folderName.trim();
 
-    if (!nextName || nextName === folder.name) {
+    if (!folder || !nextName || nextName === folder.name) {
+      if (!folder) {
+        setIsEditingName(false);
+        return;
+      }
+
       setFolderName(folder.name);
       setIsEditingName(false);
       return;
@@ -89,21 +95,23 @@ export default function FolderDetailsScreen() {
             <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
           </Pressable>
 
-          <Pressable
-            onPress={() => router.push({ pathname: "/folders/delete/[id]", params: { id: folder.id } })}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 16,
-              backgroundColor: "#FFFFFF",
-              borderWidth: 1,
-              borderColor: "#ECE6E0",
-              alignItems: "center",
-              justifyContent: "center"
-            }}
-          >
-            <Ionicons name="trash-outline" size={18} color={theme.colors.text} />
-          </Pressable>
+          {!isPersonalFolder && folder ? (
+            <Pressable
+              onPress={() => router.push({ pathname: "/folders/delete/[id]", params: { id: folder.id } })}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 16,
+                backgroundColor: "#FFFFFF",
+                borderWidth: 1,
+                borderColor: "#ECE6E0",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <Ionicons name="trash-outline" size={18} color={theme.colors.text} />
+            </Pressable>
+          ) : null}
         </View>
 
         <AppCard
@@ -125,33 +133,35 @@ export default function FolderDetailsScreen() {
                 justifyContent: "center"
               }}
             >
-              <Ionicons name="file-tray-outline" size={18} color="#FFFFFF" />
+              <Ionicons name={isPersonalFolder ? "person-outline" : "file-tray-outline"} size={18} color="#FFFFFF" />
             </View>
 
-            <Pressable
-              onPress={() => {
-                if (isEditingName) {
-                  void handleSaveFolderName();
-                  return;
-                }
+            {!isPersonalFolder ? (
+              <Pressable
+                onPress={() => {
+                  if (isEditingName) {
+                    void handleSaveFolderName();
+                    return;
+                  }
 
-                setIsEditingName(true);
-              }}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 14,
-                backgroundColor: "#FFFFFF",
-                alignItems: "center",
-                justifyContent: "center"
-              }}
-            >
-              <Ionicons
-                name={isEditingName ? "checkmark" : "create-outline"}
-                size={18}
-                color={theme.colors.text}
-              />
-            </Pressable>
+                  setIsEditingName(true);
+                }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 14,
+                  backgroundColor: "#FFFFFF",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                <Ionicons
+                  name={isEditingName ? "checkmark" : "create-outline"}
+                  size={18}
+                  color={theme.colors.text}
+                />
+              </Pressable>
+            ) : null}
           </View>
 
           <Text
@@ -162,7 +172,7 @@ export default function FolderDetailsScreen() {
           >
             Dossier
           </Text>
-          {isEditingName ? (
+          {isEditingName && folder ? (
             <TextInput
               value={folderName}
               onChangeText={setFolderName}
@@ -184,13 +194,19 @@ export default function FolderDetailsScreen() {
                 }
               ]}
             />
-          ) : (
+          ) : !isPersonalFolder && folder ? (
             <Text style={[theme.typography.h1, { color: theme.colors.text, marginTop: 8, fontSize: 24, lineHeight: 30 }]}>
               {folder.name}
             </Text>
-          )}
+          ) : isPersonalFolder ? (
+            <Text style={[theme.typography.h1, { color: theme.colors.text, marginTop: 8, fontSize: 24, lineHeight: 30 }]}>
+              Personnel
+            </Text>
+          ) : null}
           <Text style={[theme.typography.body, { color: "#6C7385", marginTop: 14 }]}>
-            {notes.length} note{notes.length > 1 ? "s" : ""} rangee{notes.length > 1 ? "s" : ""} dans ce dossier
+            {isPersonalFolder
+              ? `${notes.length} note${notes.length > 1 ? "s" : ""} sans dossier`
+              : `${notes.length} note${notes.length > 1 ? "s" : ""} rangee${notes.length > 1 ? "s" : ""} dans ce dossier`}
           </Text>
         </AppCard>
 

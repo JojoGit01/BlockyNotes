@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { AppCard } from "@/components/ui/AppCard";
+import { CollectionNoteCard } from "@/components/ui/CollectionNoteCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
@@ -96,27 +96,6 @@ export default function FolderTrashScreen() {
           </Pressable>
         </View>
 
-        <AppCard
-          style={{
-            borderRadius: 28,
-            paddingHorizontal: 20,
-            paddingVertical: 20,
-            backgroundColor: "#FBFAF8"
-          }}
-        >
-          <Text style={[theme.typography.h3, { color: theme.colors.text, textAlign: "center" }]}>
-            Les notes supprimees restent 30 jours
-          </Text>
-          <Text
-            style={[
-              theme.typography.body,
-              { color: "#7E8696", marginTop: theme.spacing.md, textAlign: "center", lineHeight: 28 }
-            ]}
-          >
-            Tu peux restaurer ou supprimer definitivement chaque note.
-          </Text>
-        </AppCard>
-
         <View style={{ gap: theme.spacing.md }}>
           {deletedNotes.length === 0 ? (
             <EmptyState
@@ -125,55 +104,16 @@ export default function FolderTrashScreen() {
             />
           ) : (
             deletedNotes.map((note) => (
-              <AppCard
+              <CollectionNoteCard
                 key={note.id}
-                style={{
-                  borderRadius: 24,
-                  paddingHorizontal: 16,
-                  paddingVertical: 16,
-                  backgroundColor: "#FFFFFF"
-                }}
-              >
-                <View style={{ gap: 12 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <Text style={[theme.typography.h3, { color: theme.colors.text, flex: 1 }]} numberOfLines={1}>
-                      {note.title || "Sans titre"}
-                    </Text>
-                    <Text style={[theme.typography.body, { color: "#B5A89C", marginLeft: 12 }]}>
-                      {dayLabel(note.deletedAt ?? note.updatedAt)}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-                    <Pressable
-                      onPress={() => void restoreNote(note.id)}
-                      style={{
-                        flex: 1,
-                        minHeight: 38,
-                        borderRadius: 16,
-                        backgroundColor: "#F4F1EE",
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}
-                    >
-                      <Text style={[theme.typography.label, { color: theme.colors.text }]}>Restaurer</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => void purgeNote(note.id)}
-                      style={{
-                        flex: 1,
-                        minHeight: 38,
-                        borderRadius: 16,
-                        backgroundColor: "#0F1B3A",
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}
-                    >
-                      <Text style={[theme.typography.label, { color: "#FFFFFF" }]}>Supprimer</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </AppCard>
+                note={note}
+                meta={`Supprimee ${dayLabel(note.deletedAt ?? note.updatedAt)}`}
+                disabledOpen
+                actions={[
+                  { label: "Restaurer", onPress: () => restoreNote(note.id), variant: "secondary" },
+                  { label: "Supprimer", onPress: () => purgeNote(note.id), variant: "danger" }
+                ]}
+              />
             ))
           )}
         </View>

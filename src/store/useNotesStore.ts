@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { sortNotes } from "@/lib/sort";
 import { archiveNoteService } from "@/services/notes/archiveNote";
 import { createNoteService } from "@/services/notes/createNote";
+import { normalizeNoteDailyEntries } from "@/services/notes/dailyEntries";
 import { deleteNoteService } from "@/services/notes/deleteNote";
 import { moveNoteService } from "@/services/notes/moveNote";
 import { restoreNoteService } from "@/services/notes/restoreNote";
@@ -18,7 +19,16 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   tags: [],
   hydrated: false,
   loadNotes: async () => {
-    const [notes, tags] = await Promise.all([notesRepository.read(), tagsRepository.read()]);
+    const [storedNotes, tags] = await Promise.all([notesRepository.read(), tagsRepository.read()]);
+    const notes = storedNotes.map(normalizeNoteDailyEntries);
+    const migrated = storedNotes.some(
+      (note, index) => note.dailyEntries === undefined || note.content !== notes[index]?.content
+    );
+
+    if (migrated) {
+      await notesRepository.write(notes);
+    }
+
     set({ notes, tags, hydrated: true });
   },
   createNote: async (input) => {
@@ -76,6 +86,13 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   toggleFavorite: async (noteId) => {
     const notes = get().notes.map((note) =>
       note.id === noteId ? updateNoteService(note, { isFavorite: !note.isFavorite }) : note
+    );
+    await notesRepository.write(notes);
+    set({ notes });
+  },
+  togglePinned: async (noteId) => {
+    const notes = get().notes.map((note) =>
+      note.id === noteId ? updateNoteService(note, { isPinned: !note.isPinned }) : note
     );
     await notesRepository.write(notes);
     set({ notes });

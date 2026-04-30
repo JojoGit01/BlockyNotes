@@ -14,6 +14,7 @@ export interface NotesState {
   archiveNote: (noteId: string) => Promise<void>;
   moveNote: (noteId: string, folderId: string | null) => Promise<void>;
   toggleFavorite: (noteId: string) => Promise<void>;
+  togglePinned: (noteId: string) => Promise<void>;
   searchNotes: (query: string) => Note[];
   getFilteredNotes: () => Note[];
 }

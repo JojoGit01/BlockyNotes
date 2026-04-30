@@ -54,6 +54,49 @@ function FolderListItem({ folder }: { folder: Folder }) {
   );
 }
 
+function PersonalFolderListItem() {
+  const theme = useTheme();
+  const notesCount = useNotesStore(
+    (state) => state.notes.filter((note) => note.folderId === null && !note.isDeleted).length
+  );
+
+  return (
+    <AppCard
+      onPress={() => router.push({ pathname: "/folders/[id]", params: { id: "personal" } })}
+      style={{
+        borderRadius: 24,
+        paddingHorizontal: 18,
+        paddingVertical: 16,
+        backgroundColor: "#FFFFFF"
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 16,
+            backgroundColor: "#EFE8F7",
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+        >
+          <Ionicons name="person-outline" size={18} color="#7C5CFA" />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={[theme.typography.h3, { color: theme.colors.text }]}>Personnel</Text>
+          <Text style={[theme.typography.body, { color: "#8E8178", marginTop: 2 }]}>
+            {notesCount} note{notesCount > 1 ? "s" : ""}
+          </Text>
+        </View>
+
+        <Ionicons name="chevron-forward" size={16} color="#B8AA9A" />
+      </View>
+    </AppCard>
+  );
+}
+
 export default function FoldersScreen() {
   const theme = useTheme();
   const folders = useFoldersStore((state) => state.folders);
@@ -195,8 +238,9 @@ export default function FoldersScreen() {
             <Text style={[theme.typography.body, { color: "#B8AA9A" }]}>Gerer</Text>
           </View>
 
+          <PersonalFolderListItem />
           {folders.length === 0 ? (
-            <EmptyState title="Aucun dossier" description="Cree un dossier pour organiser tes notes." />
+            <EmptyState title="Aucun dossier cree" description="Personnel regroupe les notes sans dossier." />
           ) : (
             folders.map((folder) => <FolderListItem key={folder.id} folder={folder} />)
           )}

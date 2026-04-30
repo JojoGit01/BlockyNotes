@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { AppCard } from "@/components/ui/AppCard";
+import { CollectionNoteCard } from "@/components/ui/CollectionNoteCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
@@ -78,27 +78,6 @@ export default function FolderArchivesScreen() {
           </Pressable>
         </View>
 
-        <AppCard
-          style={{
-            borderRadius: 28,
-            paddingHorizontal: 20,
-            paddingVertical: 20,
-            backgroundColor: "#FBFAF8"
-          }}
-        >
-          <Text style={[theme.typography.h3, { color: theme.colors.text, textAlign: "center" }]}>
-            Les notes archivees restent accessibles
-          </Text>
-          <Text
-            style={[
-              theme.typography.body,
-              { color: "#7E8696", marginTop: theme.spacing.md, textAlign: "center", lineHeight: 28 }
-            ]}
-          >
-            Range ce que tu veux conserver sans encombrer tes notes actives.
-          </Text>
-        </AppCard>
-
         <View style={{ gap: theme.spacing.md }}>
           {archivedNotes.length === 0 ? (
             <EmptyState
@@ -107,40 +86,12 @@ export default function FolderArchivesScreen() {
             />
           ) : (
             archivedNotes.map((note) => (
-              <AppCard
+              <CollectionNoteCard
                 key={note.id}
-                style={{
-                  borderRadius: 24,
-                  paddingHorizontal: 16,
-                  paddingVertical: 16,
-                  backgroundColor: "#FFFFFF"
-                }}
-              >
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[theme.typography.h3, { color: theme.colors.text }]} numberOfLines={1}>
-                      {note.title || "Sans titre"}
-                    </Text>
-                    <Text style={[theme.typography.body, { color: "#B5A89C", marginTop: 6 }]}>
-                      Archivee en {monthLabel(note.updatedAt)}
-                    </Text>
-                  </View>
-
-                  <Pressable
-                    onPress={() => void restoreNote(note.id)}
-                    style={{
-                      paddingHorizontal: 16,
-                      minHeight: 34,
-                      borderRadius: 16,
-                      backgroundColor: "#F4F1EE",
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}
-                  >
-                    <Text style={[theme.typography.label, { color: theme.colors.text }]}>Restaurer</Text>
-                  </Pressable>
-                </View>
-              </AppCard>
+                note={note}
+                meta={`Archivee en ${monthLabel(note.updatedAt)}`}
+                actions={[{ label: "Restaurer", onPress: () => restoreNote(note.id), variant: "secondary" }]}
+              />
             ))
           )}
         </View>

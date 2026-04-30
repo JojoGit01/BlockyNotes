@@ -1,10 +1,38 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { router, Tabs } from "expo-router";
+import { Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTheme } from "@/hooks/useTheme";
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === "android" ? 28 : 14);
+  const renderTabIcon = (
+    focused: boolean,
+    activeName: keyof typeof Ionicons.glyphMap,
+    inactiveName: keyof typeof Ionicons.glyphMap
+  ) => (
+    <Ionicons
+      name={focused ? activeName : inactiveName}
+      size={focused ? 18 : 21}
+      color={focused ? "#FFFFFF" : "#8B9098"}
+      style={
+        focused
+          ? {
+              backgroundColor: "#0F172A",
+              width: 36,
+              height: 36,
+              textAlign: "center",
+              textAlignVertical: "center",
+              borderRadius: 18,
+              overflow: "hidden"
+            }
+          : undefined
+      }
+    />
+  );
 
   return (
     <Tabs
@@ -15,14 +43,14 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: "#8B9098",
         tabBarStyle: {
           position: "absolute",
-          left: 18,
-          right: 18,
-          bottom: 18,
-          height: 86,
-          paddingTop: 12,
-          paddingBottom: 14,
+          left: 20,
+          right: 20,
+          bottom: bottomInset,
+          height: 76,
+          paddingTop: 8,
+          paddingBottom: 10,
           borderTopWidth: 0,
-          borderRadius: 28,
+          borderRadius: 24,
           backgroundColor: theme.colors.surface,
           shadowColor: "#0F172A",
           shadowOpacity: 0.08,
@@ -31,9 +59,9 @@ export default function TabsLayout() {
           elevation: 12
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: "500",
-          marginTop: 6
+          marginTop: 3
         },
         tabBarItemStyle: {
           paddingVertical: 2
@@ -44,26 +72,7 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Accueil",
-          tabBarIcon: ({ focused }) => (
-            <Ionicons
-              name={focused ? "home" : "home-outline"}
-              size={20}
-              color={focused ? "#FFFFFF" : "#8B9098"}
-              style={
-                focused
-                  ? {
-                      backgroundColor: "#0F172A",
-                      width: 42,
-                      height: 42,
-                      textAlign: "center",
-                      textAlignVertical: "center",
-                      borderRadius: 21,
-                      overflow: "hidden"
-                    }
-                  : undefined
-              }
-            />
-          )
+          tabBarIcon: ({ focused }) => renderTabIcon(focused, "home", "home-outline")
         }}
       />
       <Tabs.Screen
@@ -71,7 +80,12 @@ export default function TabsLayout() {
         options={{
           title: "Notes",
           popToTopOnBlur: true,
-          tabBarIcon: ({ color }) => <Ionicons name="menu-outline" size={22} color={color} />
+          tabBarIcon: ({ focused }) => renderTabIcon(focused, "menu", "menu-outline")
+        }}
+        listeners={{
+          tabPress: () => {
+            router.replace("/notes");
+          }
         }}
       />
       <Tabs.Screen
@@ -79,7 +93,7 @@ export default function TabsLayout() {
         options={{
           title: "Dossiers",
           popToTopOnBlur: true,
-          tabBarIcon: ({ color }) => <Ionicons name="grid-outline" size={20} color={color} />
+          tabBarIcon: ({ focused }) => renderTabIcon(focused, "grid", "grid-outline")
         }}
       />
       <Tabs.Screen
@@ -87,7 +101,7 @@ export default function TabsLayout() {
         options={{
           title: "Reglages",
           popToTopOnBlur: true,
-          tabBarIcon: ({ color }) => <Ionicons name="settings-outline" size={20} color={color} />
+          tabBarIcon: ({ focused }) => renderTabIcon(focused, "settings", "settings-outline")
         }}
       />
     </Tabs>

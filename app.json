@@ -9,13 +9,18 @@
     },
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/logo.png",
     "assetBundlePatterns": [
       "**/*"
     ],
     "android": {
       "package": "com.blockynotes.app",
-      "versionCode": 1,
-      "edgeToEdgeEnabled": true
+      "versionCode": 3,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "edgeToEdgeEnabled": false
     },
     "experiments": {
       "typedRoutes": true
@@ -23,6 +28,12 @@
     "plugins": [
       "expo-router",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4999c94e-53b6-445c-92fe-4d33785b8223"
+      }
+    }
   }
 }

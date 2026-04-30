@@ -1,10 +1,37 @@
+export interface NoteDailyEntry {
+  id: string;
+  date: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NoteIconKey =
+  | "auto"
+  | "document"
+  | "sport"
+  | "food"
+  | "personal"
+  | "work"
+  | "money"
+  | "travel"
+  | "health"
+  | "shopping"
+  | "school"
+  | "code"
+  | "music"
+  | "home";
+
 export interface Note {
   id: string;
   title: string;
   content: string;
+  dailyEntries?: NoteDailyEntry[];
+  iconKey?: NoteIconKey | null;
   folderId: string | null;
   tagIds: string[];
   isFavorite: boolean;
+  isPinned?: boolean;
   isArchived: boolean;
   isDeleted: boolean;
   createdAt: string;

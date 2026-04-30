@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { AppCard } from "@/components/ui/AppCard";
 import { AppInput } from "@/components/ui/AppInput";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
 import { useSettingsStore } from "@/store/useSettingsStore";
+
+const defaultDisplayName = "BlockyNotes User";
 
 function SettingsRow({
   icon,
@@ -25,13 +27,10 @@ function SettingsRow({
   const theme = useTheme();
 
   return (
-    <AppCard
+    <Pressable
       onPress={onPress}
       style={{
-        borderRadius: 24,
-        paddingHorizontal: 16,
-        paddingVertical: 16,
-        backgroundColor: "#FFFFFF"
+        paddingVertical: 16
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
@@ -55,7 +54,7 @@ function SettingsRow({
 
         <Ionicons name="chevron-forward" size={16} color="#A89D95" />
       </View>
-    </AppCard>
+    </Pressable>
   );
 }
 
@@ -65,10 +64,11 @@ export default function SettingsScreen() {
   const updateDisplayName = useSettingsStore((state) => state.updateDisplayName);
   const updateTheme = useSettingsStore((state) => state.updateTheme);
   const updateSortOrder = useSettingsStore((state) => state.updateSortOrder);
-  const [displayNameDraft, setDisplayNameDraft] = useState(settings.displayName);
+  const visibleDisplayName = settings.displayName === defaultDisplayName ? "" : settings.displayName;
+  const [displayNameDraft, setDisplayNameDraft] = useState(visibleDisplayName);
 
   useEffect(() => {
-    setDisplayNameDraft(settings.displayName);
+    setDisplayNameDraft(settings.displayName === defaultDisplayName ? "" : settings.displayName);
   }, [settings.displayName]);
 
   const themeSubtitle =
@@ -86,14 +86,14 @@ export default function SettingsScreen() {
         : "Plus recent";
 
   const saveDisplayName = () => {
-    if (displayNameDraft !== settings.displayName) {
+    if (displayNameDraft !== visibleDisplayName) {
       void updateDisplayName(displayNameDraft);
     }
   };
 
   return (
     <ScreenContainer scrollable>
-      <View style={{ gap: theme.spacing.lg, paddingBottom: 120 }}>
+      <View style={{ gap: theme.spacing.lg, paddingBottom: 24 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
           <View style={{ flex: 1 }}>
             <Text
@@ -151,7 +151,9 @@ export default function SettingsScreen() {
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={[theme.typography.h3, { color: theme.colors.text }]}>{settings.displayName}</Text>
+              <Text style={[theme.typography.h3, { color: theme.colors.text }]}>
+                {visibleDisplayName || "Ton profil"}
+              </Text>
               <Text style={[theme.typography.body, { color: "#7E8696", marginTop: 2 }]}>
                 Ton espace de notes personnel
               </Text>
@@ -167,7 +169,7 @@ export default function SettingsScreen() {
               onChangeText={setDisplayNameDraft}
               onBlur={saveDisplayName}
               onSubmitEditing={saveDisplayName}
-              placeholder="Ton nom"
+              placeholder="Ex: User"
               style={{
                 minHeight: 48,
                 borderRadius: 18,
@@ -178,70 +180,82 @@ export default function SettingsScreen() {
           </View>
         </AppCard>
 
-        <SettingsRow
-          icon="color-palette-outline"
-          title="Theme"
-          subtitle={themeSubtitle}
-          accentColor="#F97316"
-          onPress={() =>
-            void updateTheme(
-              settings.theme === "system"
-                ? "light"
-                : settings.theme === "light"
-                  ? "dark"
-                  : "system"
-            )
-          }
-        />
-
-        <SettingsRow
-          icon="cloud-outline"
-          title="Sauvegarde"
-          subtitle="Activee"
-          accentColor="#0F172A"
-        />
-
-        <SettingsRow
-          icon="notifications-outline"
-          title="Notifications"
-          subtitle="Desactivees"
-          accentColor="#F59E0B"
-        />
-
-        <SettingsRow
-          icon="download-outline"
-          title="Exporter mes notes"
-          subtitle="PDF, texte brut"
-          accentColor="#0F172A"
-          onPress={() =>
-            void updateSortOrder(
-              settings.sortOrder === "updatedAt-desc"
-                ? "title-asc"
-                : settings.sortOrder === "title-asc"
-                  ? "updatedAt-asc"
-                  : "updatedAt-desc"
-            )
-          }
-        />
-
-        <SettingsRow
-          icon="information-circle-outline"
-          title="A propos de l'app"
-          subtitle="Version, support, confidentialite"
-          accentColor="#8B5CF6"
-          onPress={() => router.push("../settings/about")}
-        />
-
         <AppCard
           style={{
-            borderRadius: 24,
+            borderRadius: 28,
             paddingHorizontal: 16,
-            paddingVertical: 16,
-            backgroundColor: "#FBFAF8"
+            paddingVertical: 4,
+            backgroundColor: "#FFFFFF"
           }}
         >
-          <Text style={[theme.typography.h3, { color: theme.colors.text }]}>Tri actuel</Text>
-          <Text style={[theme.typography.body, { color: "#7E8696", marginTop: 6 }]}>{sortSubtitle}</Text>
+          {[
+            {
+              icon: "color-palette-outline" as keyof typeof Ionicons.glyphMap,
+              title: "Theme",
+              subtitle: themeSubtitle,
+              accentColor: "#F97316",
+              onPress: () =>
+                void updateTheme(
+                  settings.theme === "system"
+                    ? "light"
+                    : settings.theme === "light"
+                      ? "dark"
+                      : "system"
+                )
+            },
+            {
+              icon: "cloud-outline" as keyof typeof Ionicons.glyphMap,
+              title: "Sauvegarde",
+              subtitle: "Activee",
+              accentColor: "#0F172A"
+            },
+            {
+              icon: "notifications-outline" as keyof typeof Ionicons.glyphMap,
+              title: "Notifications",
+              subtitle: "Desactivees",
+              accentColor: "#F59E0B"
+            },
+            {
+              icon: "download-outline" as keyof typeof Ionicons.glyphMap,
+              title: "Exporter mes notes",
+              subtitle: "PDF, texte brut",
+              accentColor: "#0F172A",
+              onPress: () =>
+                void updateSortOrder(
+                  settings.sortOrder === "updatedAt-desc"
+                    ? "title-asc"
+                    : settings.sortOrder === "title-asc"
+                      ? "updatedAt-asc"
+                      : "updatedAt-desc"
+                )
+            },
+            {
+              icon: "swap-vertical-outline" as keyof typeof Ionicons.glyphMap,
+              title: "Tri actuel",
+              subtitle: sortSubtitle,
+              accentColor: "#2563EB"
+            },
+            {
+              icon: "information-circle-outline" as keyof typeof Ionicons.glyphMap,
+              title: "A propos de l'app",
+              subtitle: "Version, support, confidentialite",
+              accentColor: "#8B5CF6",
+              onPress: () => router.push("../settings/about")
+            }
+          ].map((row, index, rows) => (
+            <View key={row.title}>
+              <SettingsRow
+                icon={row.icon}
+                title={row.title}
+                subtitle={row.subtitle}
+                accentColor={row.accentColor}
+                onPress={row.onPress}
+              />
+              {index < rows.length - 1 ? (
+                <View style={{ height: 1, backgroundColor: "#F1E8E2", marginLeft: 60 }} />
+              ) : null}
+            </View>
+          ))}
         </AppCard>
       </View>
     </ScreenContainer>
