@@ -1,15 +1,29 @@
 import { useSegments } from "expo-router";
-import { PropsWithChildren } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
+import { PropsWithChildren, ReactNode, Ref } from "react";
+import { KeyboardAvoidingView, Platform, ScrollView, ScrollViewProps, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppBackground } from "@/components/ui/AppBackground";
 import { useTheme } from "@/hooks/useTheme";
 
 interface ScreenContainerProps extends PropsWithChildren {
+  floatingElement?: ReactNode;
+  onScroll?: ScrollViewProps["onScroll"];
+  scrollEventThrottle?: number;
+  scrollRef?: Ref<ScrollView>;
   scrollable?: boolean;
+  scrollBottomPadding?: number;
 }
 
-export function ScreenContainer({ children, scrollable = false }: ScreenContainerProps) {
+export function ScreenContainer({
+  children,
+  floatingElement,
+  onScroll,
+  scrollable = false,
+  scrollBottomPadding,
+  scrollEventThrottle,
+  scrollRef
+}: ScreenContainerProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const segments = useSegments();
@@ -31,6 +45,7 @@ export function ScreenContainer({ children, scrollable = false }: ScreenContaine
 
   return (
     <SafeAreaView edges={["top", "bottom", "left", "right"]} style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <AppBackground />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
@@ -41,10 +56,13 @@ export function ScreenContainer({ children, scrollable = false }: ScreenContaine
             automaticallyAdjustKeyboardInsets
             contentContainerStyle={{
               flexGrow: 1,
-              paddingBottom: theme.spacing.xxl + bottomSafeSpace + tabBarSafeSpace
+              paddingBottom: scrollBottomPadding ?? theme.spacing.xxl + bottomSafeSpace + tabBarSafeSpace
             }}
             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
             keyboardShouldPersistTaps="handled"
+            onScroll={onScroll}
+            ref={scrollRef}
+            scrollEventThrottle={scrollEventThrottle}
           >
             {content}
           </ScrollView>
@@ -52,6 +70,7 @@ export function ScreenContainer({ children, scrollable = false }: ScreenContaine
           content
         )}
       </KeyboardAvoidingView>
+      {floatingElement}
     </SafeAreaView>
   );
 }

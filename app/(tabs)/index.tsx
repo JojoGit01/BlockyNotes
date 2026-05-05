@@ -1,16 +1,123 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppCard } from "@/components/ui/AppCard";
-import { AppInput } from "@/components/ui/AppInput";
-import { CollectionNoteCard } from "@/components/ui/CollectionNoteCard";
+import { AppBackground } from "@/components/ui/AppBackground";
 import { useTheme } from "@/hooks/useTheme";
 import { getNoteIcon } from "@/services/notes/noteIcon";
 import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { useUIStore } from "@/store/useUIStore";
+import type { Note } from "@/types/models";
+
+const navy = "#0F1B3A";
+
+const noteDateLabel = (isoDate: string) =>
+  new Date(isoDate).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long"
+  });
+
+const noteElementCount = (note: Note) => {
+  const count = note.content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+
+  return Math.max(count, note.title.trim() ? 1 : 0);
+};
+
+function StatItem({
+  icon,
+  color,
+  background,
+  label,
+  value
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  background: string;
+  label: string;
+  value: number;
+}) {
+  const theme = useTheme();
+
+  return (
+    <View style={{ flex: 1, alignItems: "center" }}>
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 13,
+          backgroundColor: background,
+          alignItems: "center",
+          justifyContent: "center"
+        }}
+      >
+        <Ionicons name={icon} size={16} color={color} />
+      </View>
+      <Text style={[theme.typography.caption, { color: "#8D8F99", marginTop: 5, fontWeight: "800", fontSize: 11 }]}>{label}</Text>
+      <Text style={{ color: navy, fontSize: 18, lineHeight: 22, fontWeight: "900", marginTop: 1 }}>{value}</Text>
+    </View>
+  );
+}
+
+function HomeNoteRow({ note }: { note: Note }) {
+  const theme = useTheme();
+  const noteIcon = getNoteIcon(note);
+  const elementCount = noteElementCount(note);
+  const meta =
+    elementCount > 1
+      ? `${elementCount} elements - ${noteDateLabel(note.updatedAt)}`
+      : `${noteDateLabel(note.updatedAt)} - Mode jour par jour`;
+
+  return (
+    <Pressable
+      onPress={() => router.push(`/notes/${note.id}`)}
+      style={({ pressed }) => ({
+        minHeight: 68,
+        borderRadius: 20,
+        backgroundColor: "#FFFFFF",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        opacity: pressed ? 0.88 : 1,
+        shadowColor: "#0F172A",
+        shadowOpacity: 0.06,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 5
+      })}
+    >
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 16,
+          backgroundColor: noteIcon.backgroundColor,
+          alignItems: "center",
+          justifyContent: "center"
+        }}
+      >
+        <Ionicons name={noteIcon.icon} size={19} color={noteIcon.color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[theme.typography.h3, { color: navy, fontSize: 16, lineHeight: 21, fontWeight: "900" }]} numberOfLines={1}>
+          {note.title || "Sans titre"}
+        </Text>
+        <Text style={[theme.typography.caption, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+          {meta}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color="#A4A7B0" />
+    </Pressable>
+  );
+}
 
 export default function DashboardScreen() {
   const theme = useTheme();
@@ -18,240 +125,246 @@ export default function DashboardScreen() {
   const notes = useNotesStore((state) => state.notes);
   const folders = useFoldersStore((state) => state.folders);
   const displayName = useSettingsStore((state) => state.settings.displayName);
-  const visibleDisplayName = displayName === "BlockyNotes User" ? "" : displayName.trim();
+  const searchQuery = useUIStore((state) => state.searchQuery);
+  const setSearchQuery = useUIStore((state) => state.setSearchQuery);
+  const visibleDisplayName = displayName === "BlockyNotes User" ? "Jo" : displayName.trim();
   const activeNotes = notes.filter((note) => !note.isDeleted && !note.isArchived);
   const pinnedNotes = activeNotes
     .filter((note) => note.isPinned)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 3);
-  const favoriteNotes = notes.filter((note) => !note.isDeleted && !note.isArchived && note.isFavorite);
-  const archivedCount = notes.filter((note) => note.isArchived && !note.isDeleted).length;
-  const recentNotes = [...notes]
-    .filter((note) => !note.isDeleted)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 3);
+    .slice(0, 2);
+  const favoriteNotesCount = activeNotes.filter((note) => note.isFavorite).length;
+  const datedNotesCount = activeNotes.filter((note) => note.dailyEntries && note.dailyEntries.length > 0).length;
+  const recentNotes = [...activeNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3);
   const floatingButtonBottom = insets.bottom + 90;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: floatingButtonBottom + 110 }}>
-        <View style={{ gap: theme.spacing.lg }}>
-        <View style={{ paddingTop: theme.spacing.sm }}>
-          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: theme.spacing.md }}>
-            <View style={{ flex: 1 }}>
+      <AppBackground />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: floatingButtonBottom + 34 }}>
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <View style={{ flex: 1, marginLeft: 4 }}>
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#B8AA9A", letterSpacing: 3, textTransform: "uppercase" }
+                  { color: navy, letterSpacing: 5, textTransform: "uppercase", fontWeight: "900" }
                 ]}
               >
                 Bonjour
               </Text>
-              {visibleDisplayName ? (
-                <Text
-                  style={[
-                    theme.typography.h1,
-                    { color: theme.colors.text, marginTop: theme.spacing.xs, fontSize: 34, lineHeight: 38 }
-                  ]}
-                >
-                  {visibleDisplayName}
-                </Text>
-              ) : null}
+              <Text style={{ color: navy, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }}>
+                {visibleDisplayName || "Jo"}
+              </Text>
             </View>
+
             <Pressable
               onPress={() => router.push("/settings")}
-              style={{
-                width: 44,
-                height: 44,
+              style={({ pressed }) => ({
+                width: 52,
+                height: 52,
                 borderRadius: 18,
-                backgroundColor: "#F4F1EE",
+                backgroundColor: "#FFFFFF",
                 alignItems: "center",
-                justifyContent: "center"
-              }}
+                justifyContent: "center",
+                opacity: pressed ? 0.82 : 1,
+                shadowColor: "#0F172A",
+                shadowOpacity: 0.08,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: 8
+              })}
             >
-              <Ionicons name="person-circle-outline" size={23} color={theme.colors.text} />
+            <Ionicons name="radio-button-on" size={20} color={navy} />
             </Pressable>
           </View>
-        </View>
 
-        <AppCard
-          style={{
-            backgroundColor: "#111C34",
-            borderColor: "#1B2743",
-            borderRadius: 24,
-            paddingHorizontal: 16,
-            paddingVertical: 14
-          }}
-        >
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
+          <View
+            style={{
+              minHeight: 116,
+              borderRadius: 24,
+              backgroundColor: navy,
+              overflow: "hidden",
+              padding: 18,
+              justifyContent: "space-between",
+              shadowColor: navy,
+              shadowOpacity: 0.16,
+              shadowRadius: 22,
+              shadowOffset: { width: 0, height: 12 },
+              elevation: 8
+            }}
+          >
+            <View
+              style={{
+                position: "absolute",
+                right: -48,
+                top: 8,
+                width: 210,
+                height: 210,
+                borderRadius: 105,
+                backgroundColor: "rgba(255,255,255,0.08)"
+              }}
+            />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
               <View
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 14,
-                  backgroundColor: "#A855F7",
+                  width: 54,
+                  height: 54,
+                  borderRadius: 18,
+                  backgroundColor: "#8B4DFF",
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="sparkles" size={16} color="#FFFFFF" />
+                <Ionicons name="sparkles" size={26} color="#FFFFFF" />
               </View>
-              <View>
-                <Text
-                  style={[
-                    theme.typography.caption,
-                    { color: "#8CA0C3", letterSpacing: 3, textTransform: "uppercase" }
-                  ]}
-                >
-                  App perso
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: "#FFFFFF", fontSize: 22, lineHeight: 27, fontWeight: "900" }}>BlockyNotes</Text>
+                <Text style={[theme.typography.caption, { color: "#FFFFFF", marginTop: 3 }]} numberOfLines={2}>
+                  Notes, journal & dossiers.
                 </Text>
-                <Text style={[theme.typography.h3, { color: "#FFFFFF", marginTop: 1 }]}>BlockyNotes</Text>
+              </View>
+              <View
+                style={{
+                  borderRadius: 14,
+                  backgroundColor: "rgba(255,255,255,0.16)",
+                  paddingHorizontal: 10,
+                  paddingVertical: 7
+                }}
+              >
+                <Text style={[theme.typography.caption, { color: "#FFFFFF", fontWeight: "900" }]}>Premium</Text>
               </View>
             </View>
+          </View>
 
-            <View
-              style={{
-                backgroundColor: "#2A354D",
-                paddingHorizontal: 12,
-                paddingVertical: 7,
-                borderRadius: 14
-              }}
+          <View
+            style={{
+              minHeight: 84,
+              borderRadius: 22,
+              backgroundColor: "#FFFFFF",
+              paddingHorizontal: 10,
+              paddingVertical: 10,
+              flexDirection: "row",
+              shadowColor: "#0F172A",
+              shadowOpacity: 0.06,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 5
+            }}
+          >
+            <StatItem icon="document-text" color="#6F4DFF" background="#EFE5FF" label="Notes" value={activeNotes.length} />
+            <View style={{ width: 1, backgroundColor: "#E8E9EE", marginVertical: 10 }} />
+            <StatItem icon="star" color="#F97316" background="#FFF1DC" label="Favoris" value={favoriteNotesCount} />
+            <View style={{ width: 1, backgroundColor: "#E8E9EE", marginVertical: 10 }} />
+            <StatItem icon="folder" color="#0F766E" background="#D8FAF1" label="Dossiers" value={folders.length + 1} />
+            <View style={{ width: 1, backgroundColor: "#E8E9EE", marginVertical: 10 }} />
+            <StatItem icon="time" color="#4F6EF7" background="#E4ECFF" label="Datees" value={datedNotesCount} />
+          </View>
+
+          <View
+            style={{
+              minHeight: 54,
+              borderRadius: 20,
+              backgroundColor: "#FFFFFF",
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 16,
+              gap: 12,
+              shadowColor: "#0F172A",
+              shadowOpacity: 0.05,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 5
+            }}
+          >
+            <Ionicons name="search-outline" size={17} color="#7B7F89" />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Recherche globale..."
+              placeholderTextColor="#767A82"
+              style={[theme.typography.body, { flex: 1, color: navy, paddingVertical: 8 }]}
+            />
+            <Pressable
+              onPress={() => router.push("/notes")}
+              style={({ pressed }) => ({
+                width: 34,
+                height: 34,
+                borderRadius: 13,
+                backgroundColor: "#F2F4F8",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.82 : 1
+              })}
             >
-              <Text style={[theme.typography.caption, { color: "#FFFFFF" }]}>Aujourd&apos;hui</Text>
-            </View>
+              <Ionicons name="list" size={18} color={navy} />
+            </Pressable>
           </View>
 
-          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: theme.spacing.sm, marginTop: theme.spacing.md }}>
-            <Text style={[theme.typography.h1, { color: "#FFFFFF", fontSize: 30, lineHeight: 32 }]}>
-              {activeNotes.length}
-            </Text>
-            <Text style={[theme.typography.body, { color: "#D5DEF0", paddingBottom: 4 }]}>notes actives</Text>
-          </View>
-        </AppCard>
-
-        <AppCard style={{ borderRadius: 22, paddingVertical: 12 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            {[
-              { label: "Notes", value: activeNotes.length },
-              { label: "Favoris", value: favoriteNotes.length },
-              { label: "Dossiers", value: folders.length },
-              { label: "Archives", value: archivedCount }
-            ].map((item) => (
-              <View key={item.label} style={{ flex: 1, alignItems: "center", gap: 6 }}>
-                <Text style={[theme.typography.caption, { color: "#AA9F97" }]}>{item.label}</Text>
-                <Text style={[theme.typography.h3, { color: theme.colors.text }]}>{item.value}</Text>
+          {pinnedNotes.length > 0 ? (
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ color: navy, fontSize: 20, lineHeight: 25, fontWeight: "900" }}>Epinglees</Text>
+                <Pressable onPress={() => router.push("/notes")}>
+                  <Text style={[theme.typography.label, { color: navy, fontWeight: "900" }]}>Voir tout</Text>
+                </Pressable>
               </View>
-            ))}
-          </View>
-        </AppCard>
-
-        <AppInput
-          placeholder="Rechercher une note, un dossier, un tag..."
-          style={{
-            borderRadius: 22,
-            minHeight: 56,
-            paddingHorizontal: 18,
-            backgroundColor: "#F9F7F4",
-            borderColor: "#ECE5DF"
-          }}
-        />
-
-        {pinnedNotes.length > 0 ? (
-          <>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={[theme.typography.h3, { color: theme.colors.text }]}>Epingles</Text>
-              <Ionicons name="pin" size={16} color="#B5A89C" />
-            </View>
-
-            <View style={{ gap: theme.spacing.sm }}>
               {pinnedNotes.map((note) => (
-                <CollectionNoteCard key={note.id} note={note} />
+                <HomeNoteRow key={note.id} note={note} />
               ))}
             </View>
-          </>
-        ) : null}
+          ) : null}
 
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={[theme.typography.h3, { color: theme.colors.text }]}>Recemment modifiees</Text>
-          <Text onPress={() => router.push("/notes")} style={[theme.typography.body, { color: "#AA9F97" }]}>
-            Voir tout
-          </Text>
-        </View>
-
-        {recentNotes.length > 0 ? (
-          <View style={{ gap: theme.spacing.sm }}>
-            {recentNotes.map((note) => {
-              const noteIcon = getNoteIcon(note);
-
-              return (
-                <AppCard
-                  key={note.id}
-                  style={{
-                    borderRadius: 20,
-                    backgroundColor: "#FFFFFF",
-                    paddingVertical: 14,
-                    paddingHorizontal: 14
-                  }}
-                  onPress={() => router.push(`/notes/${note.id}`)}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
-                    <View
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 16,
-                        backgroundColor: noteIcon.backgroundColor,
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}
-                    >
-                      <Ionicons name={noteIcon.icon} size={15} color={noteIcon.color} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[theme.typography.h3, { color: theme.colors.text }]} numberOfLines={1}>
-                        {note.title || "Sans titre"}
-                      </Text>
-                      <Text style={[theme.typography.body, { color: "#6F7684", marginTop: 2 }]} numberOfLines={1}>
-                        {note.content || "Creer une app de notes personnelle, rapide et agreable."}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color="#B5A89C" />
-                  </View>
-                </AppCard>
-              );
-            })}
+          <View style={{ gap: 10 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ color: navy, fontSize: 20, lineHeight: 25, fontWeight: "900" }}>Recemment modifiees</Text>
+              <Pressable onPress={() => router.push("/notes")}>
+                <Text style={[theme.typography.label, { color: navy, fontWeight: "900" }]}>Voir tout</Text>
+              </Pressable>
+            </View>
+            {recentNotes.length > 0 ? (
+              recentNotes.map((note) => <HomeNoteRow key={note.id} note={note} />)
+            ) : (
+              <View
+                style={{
+                  borderRadius: 20,
+                  backgroundColor: "#FFFFFF",
+                  padding: 14,
+                  shadowColor: "#0F172A",
+                  shadowOpacity: 0.05,
+                  shadowRadius: 18,
+                  shadowOffset: { width: 0, height: 10 },
+                  elevation: 5
+                }}
+              >
+                <Text style={[theme.typography.body, { color: "#8D8F99" }]}>Aucune note recente pour le moment.</Text>
+              </View>
+            )}
           </View>
-        ) : (
-          <AppCard style={{ borderRadius: 24 }}>
-            <Text style={[theme.typography.body, { color: theme.colors.textMuted }]}>
-              Aucune note recente pour le moment.
-            </Text>
-          </AppCard>
-        )}
         </View>
       </ScrollView>
 
       <Pressable
         onPress={() => router.push("/notes/new")}
-        style={{
+        style={({ pressed }) => ({
           position: "absolute",
-          right: 18,
+          right: 24,
           bottom: floatingButtonBottom,
           width: 58,
           height: 58,
-          borderRadius: 22,
-          backgroundColor: "#0F1B3A",
+          borderRadius: 21,
+          backgroundColor: navy,
           alignItems: "center",
           justifyContent: "center",
-          shadowColor: "#0F172A",
-          shadowOpacity: 0.16,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 8
-        }}
+          opacity: pressed ? 0.9 : 1,
+          shadowColor: navy,
+          shadowOpacity: 0.26,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 12
+        })}
       >
-        <Ionicons name="add" size={26} color="#FFFFFF" />
+        <Ionicons name="add" size={30} color="#FFFFFF" />
       </Pressable>
     </SafeAreaView>
   );

@@ -11,6 +11,7 @@ export const createFolderService = (
   return {
     id: createId("folder"),
     name: input.name.trim(),
+    iconKey: input.iconKey ?? "briefcase",
     color: input.color ?? DEFAULT_FOLDER_COLOR,
     createdAt: timestamp,
     updatedAt: timestamp

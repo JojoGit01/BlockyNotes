@@ -1,11 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppCard } from "@/components/ui/AppCard";
-import { AppInput } from "@/components/ui/AppInput";
+import { AppBackground } from "@/components/ui/AppBackground";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
 import { sortNotes } from "@/lib/sort";
@@ -17,76 +16,123 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { useUIStore } from "@/store/useUIStore";
 import type { Note, SortOrder } from "@/types/models";
 
-const dayLabel = (isoDate: string) => {
-  const noteDate = new Date(isoDate);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(noteDate.getFullYear(), noteDate.getMonth(), noteDate.getDate());
-  const diffDays = Math.round((today.getTime() - target.getTime()) / 86400000);
+type NotesTab = "all" | "favorites" | "dated";
 
-  if (diffDays <= 0) {
-    return "Aujourd'hui";
-  }
+const navy = "#0F1B3A";
 
-  if (diffDays === 1) {
-    return "Hier";
-  }
+const noteDateLabel = (isoDate: string) =>
+  new Date(isoDate).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long"
+  });
 
-  return noteDate.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+const noteElementCount = (note: Note) => {
+  const count = note.content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+
+  return Math.max(count, note.title.trim() ? 1 : 0);
 };
+
+function NoteChip({ label, icon }: { label: string; icon?: keyof typeof Ionicons.glyphMap }) {
+  const theme = useTheme();
+
+  return (
+    <View
+      style={{
+        borderRadius: 10,
+        backgroundColor: "#EEF0F4",
+        paddingHorizontal: 7,
+        paddingVertical: 4,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4
+      }}
+    >
+      {icon ? <Ionicons name={icon} size={10} color="#878A94" /> : null}
+      <Text style={[theme.typography.caption, { color: "#878A94", fontWeight: "900", fontSize: 10 }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
 
 function NotesListItem({ note }: { note: Note }) {
   const theme = useTheme();
   const folder = useFoldersStore((state) => state.folders.find((entry) => entry.id === note.folderId));
   const noteIcon = getNoteIcon(note);
+  const elementCount = noteElementCount(note);
+  const contentPreview = note.content.trim().split(/\r?\n/).find(Boolean);
+  const subtitle =
+    elementCount > 1
+      ? `${elementCount} elements - ${noteDateLabel(note.updatedAt)}`
+      : contentPreview
+        ? contentPreview
+        : noteDateLabel(note.updatedAt);
+  const chips = [
+    folder?.name ?? (note.folderId === null ? "Personnel" : null),
+    note.isFavorite ? "Favori" : null,
+    note.isPinned ? "Epinglee" : null
+  ].filter(Boolean) as string[];
 
   return (
-    <AppCard
+    <Pressable
       onPress={() => router.push(`/notes/${note.id}`)}
-      style={{
-        borderRadius: 24,
-        paddingVertical: 16,
-        paddingHorizontal: 16,
-        backgroundColor: "#FFFFFF"
-      }}
+      style={({ pressed }) => ({
+        minHeight: 88,
+        borderRadius: 22,
+        backgroundColor: "#FFFFFF",
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        opacity: pressed ? 0.88 : 1,
+        shadowColor: "#0F172A",
+        shadowOpacity: 0.06,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 5
+      })}
     >
-      <View style={{ gap: 8 }}>
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md }}>
-          <View
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 16,
-              backgroundColor: noteIcon.backgroundColor,
-              alignItems: "center",
-              justifyContent: "center"
-            }}
-          >
-            <Ionicons name={noteIcon.icon} size={16} color={noteIcon.color} />
-          </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 16,
+            backgroundColor: noteIcon.backgroundColor,
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+        >
+          <Ionicons name={noteIcon.icon} size={20} color={noteIcon.color} />
+        </View>
 
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <Text style={[theme.typography.h3, { color: theme.colors.text, flex: 1 }]} numberOfLines={1}>
-                {note.title || "Sans titre"}
-              </Text>
-              {note.isPinned ? <Ionicons name="pin" size={14} color="#0F1B3A" /> : null}
-              <Text style={[theme.typography.body, { color: "#B5A89C", marginLeft: 12 }]}>
-                {dayLabel(note.updatedAt)}
-              </Text>
-            </View>
-
-            <Text style={[theme.typography.body, { color: "#8E8178", marginTop: 6 }]} numberOfLines={1}>
-              {folder?.name ?? "Personnel"}
-            </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[theme.typography.h3, { color: navy, fontSize: 16, lineHeight: 21, fontWeight: "900" }]} numberOfLines={1}>
+            {note.title || "Sans titre"}
+          </Text>
+          <Text style={[theme.typography.caption, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+            {subtitle}
+          </Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+            {chips.length > 0 ? (
+              chips.slice(0, 3).map((chip) => (
+                <NoteChip
+                  key={chip}
+                  label={chip}
+                  icon={chip === "Favori" ? "star" : chip === "Epinglee" ? "sparkles" : undefined}
+                />
+              ))
+            ) : (
+              <NoteChip label="Note" />
+            )}
           </View>
         </View>
 
-        <Text style={[theme.typography.body, { color: "#596579" }]} numberOfLines={2}>
-          {note.content || "Appuie pour ouvrir directement l'editeur."}
-        </Text>
+        <Ionicons name="chevron-forward" size={18} color="#A4A7B0" />
       </View>
-    </AppCard>
+    </Pressable>
   );
 }
 
@@ -99,18 +145,12 @@ export default function NotesScreen() {
   const updateSortOrder = useSettingsStore((state) => state.updateSortOrder);
   const searchQuery = useUIStore((state) => state.searchQuery);
   const selectedFolderId = useUIStore((state) => state.selectedFolderId);
-  const showDeleted = useUIStore((state) => state.showDeleted);
   const setSearchQuery = useUIStore((state) => state.setSearchQuery);
   const setSelectedFolder = useUIStore((state) => state.setSelectedFolder);
-  const toggleShowDeleted = useUIStore((state) => state.toggleShowDeleted);
   const [showFilters, setShowFilters] = useState(false);
-  const [quickFilter, setQuickFilter] = useState<"all" | "recent" | "deleted">("all");
+  const [activeTab, setActiveTab] = useState<NotesTab>("all");
   const filteredNotes = useMemo(() => {
     const visibleNotes = notes.filter((note) => {
-      if (showDeleted) {
-        return note.isDeleted;
-      }
-
       if (note.isDeleted) {
         return false;
       }
@@ -119,243 +159,177 @@ export default function NotesScreen() {
         return false;
       }
 
+      if (activeTab === "favorites" && !note.isFavorite) {
+        return false;
+      }
+
+      if (activeTab === "dated" && (!note.dailyEntries || note.dailyEntries.length === 0)) {
+        return false;
+      }
+
       return true;
     });
 
-    return sortNotes(searchNotesService(visibleNotes, searchQuery), sortOrder).sort((a, b) => {
+    return sortNotes(searchNotesService(visibleNotes, searchQuery), activeTab === "dated" ? "updatedAt-desc" : sortOrder).sort((a, b) => {
       if (a.isPinned === b.isPinned) {
         return 0;
       }
 
       return a.isPinned ? -1 : 1;
     });
-  }, [notes, searchQuery, selectedFolderId, showDeleted, sortOrder]);
-  const hasActiveSearch = searchQuery.trim().length > 0 || selectedFolderId !== null || showDeleted;
-  const resetFilters = () => {
-    setSearchQuery("");
-    setSelectedFolder(null);
-    setQuickFilter("all");
-    if (showDeleted) {
-      toggleShowDeleted();
-    }
-  };
-
-  const closeDeletedIfNeeded = () => {
-    if (showDeleted) {
-      toggleShowDeleted();
-    }
-  };
+  }, [activeTab, notes, searchQuery, selectedFolderId, sortOrder]);
+  const floatingButtonBottom = insets.bottom + 90;
 
   const selectSortOrder = async (nextSortOrder: SortOrder) => {
     await updateSortOrder(nextSortOrder);
     setShowFilters(false);
   };
 
-  const chips = [
-    {
-      key: "all",
-      label: "Toutes",
-      active: quickFilter === "all" && selectedFolderId === null && !showDeleted,
-      onPress: () => {
-        setQuickFilter("all");
-        setSelectedFolder(null);
-        closeDeletedIfNeeded();
-      }
-    },
-    {
-      key: "recent",
-      label: "Recentes",
-      active: quickFilter === "recent" && selectedFolderId === null && !showDeleted,
-      onPress: () => {
-        setQuickFilter("recent");
-        setSelectedFolder(null);
-        closeDeletedIfNeeded();
-        void updateSortOrder("updatedAt-desc");
-      }
-    },
-    {
-      key: "deleted",
-      label: "Corbeille",
-      active: showDeleted,
-      onPress: () => {
-        setQuickFilter("deleted");
-        toggleShowDeleted();
-      }
-    }
+  const tabs: { key: NotesTab; label: string }[] = [
+    { key: "all", label: "Toutes" },
+    { key: "favorites", label: "Favoris" },
+    { key: "dated", label: "Datees" }
   ];
-  const floatingButtonBottom = insets.bottom + 90;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: floatingButtonBottom + 110 }}>
-        <View style={{ gap: theme.spacing.lg }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <View style={{ flex: 1 }}>
-            <Text style={[theme.typography.caption, { color: "#B8AA9A", letterSpacing: 3, textTransform: "uppercase" }]}>
-              {hasActiveSearch && filteredNotes.length === 0 ? "Recherche" : "Bibliotheque"}
-            </Text>
-            <Text
-              style={[
-                theme.typography.h1,
-                { color: theme.colors.text, marginTop: theme.spacing.sm, fontSize: 38, lineHeight: 46 }
-              ]}
-            >
-              {hasActiveSearch && filteredNotes.length === 0 ? "Aucun resultat" : "Toutes les notes"}
-            </Text>
-          </View>
+      <AppBackground />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: floatingButtonBottom + 82 }}>
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <View style={{ flex: 1, marginLeft: 4 }}>
+              <Text
+                style={[
+                  theme.typography.caption,
+                  { color: navy, letterSpacing: 5, textTransform: "uppercase", fontWeight: "900" }
+                ]}
+              >
+                Bibliotheque
+              </Text>
+              <Text style={{ color: navy, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }}>
+                Notes
+              </Text>
+            </View>
 
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-            <AppCard
-              style={{
-                width: 44,
-                height: 44,
-                padding: 0,
-                borderRadius: 16,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "#F4F4F4",
-                borderColor: "#F1E8E2"
-              }}
-            >
-              <Ionicons
-                name={hasActiveSearch && filteredNotes.length === 0 ? "search-outline" : "grid-outline"}
-                size={17}
-                color={theme.colors.text}
-              />
-            </AppCard>
-            <AppCard
+            <Pressable
               onPress={() => router.push("/notes/favorites")}
-              style={{
-                width: 44,
-                height: 44,
-                padding: 0,
-                borderRadius: 16,
+              style={({ pressed }) => ({
+                width: 52,
+                height: 52,
+                borderRadius: 18,
+                backgroundColor: "#FFFFFF",
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "#0F1B3A",
-                borderWidth: 0
-              }}
+                opacity: pressed ? 0.82 : 1,
+                shadowColor: "#0F172A",
+                shadowOpacity: 0.08,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: 8
+              })}
             >
-              <Ionicons name="star" size={16} color="#FFFFFF" />
-            </AppCard>
+              <Ionicons name="star-outline" size={21} color={navy} />
+            </Pressable>
           </View>
-        </View>
 
-        <AppInput
-          placeholder="Rechercher parmi toutes tes notes..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={{
-            borderRadius: 22,
-            minHeight: 54,
-            paddingHorizontal: 18,
-            backgroundColor: "#FAF8F5",
-            borderColor: "#EFE6DF"
-          }}
-        />
+          <View
+            style={{
+              minHeight: 46,
+              borderRadius: 18,
+              backgroundColor: "#EDECF1",
+              padding: 4,
+              flexDirection: "row"
+            }}
+          >
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.key;
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.sm }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-              {chips.map((chip) => (
+              return (
                 <Pressable
-                  key={chip.key}
-                  onPress={chip.onPress}
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderRadius: 16,
-                    backgroundColor: chip.active ? "#0F1B3A" : "#F3F1EF"
-                  }}
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    borderRadius: 15,
+                    backgroundColor: isActive ? navy : "transparent",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: pressed ? 0.84 : 1
+                  })}
                 >
                   <Text
                     style={[
-                      theme.typography.caption,
-                      { color: chip.active ? "#FFFFFF" : "#8C8178", fontWeight: "600" }
+                      theme.typography.label,
+                      { color: isActive ? "#FFFFFF" : "#8D8F99", fontWeight: "900" }
                     ]}
                   >
-                    {chip.label}
+                    {tab.label}
                   </Text>
                 </Pressable>
-              ))}
-            </View>
-          </ScrollView>
+              );
+            })}
+          </View>
 
-          <Pressable
-            accessibilityLabel="Filtrer les notes"
-            onPress={() => setShowFilters(true)}
+          <View
             style={{
-              width: 42,
-              height: 42,
-              borderRadius: 16,
-              backgroundColor: selectedFolderId ? "#0F1B3A" : "#F3F1EF",
+              minHeight: 56,
+              borderRadius: 20,
+              backgroundColor: "#FFFFFF",
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center"
+              paddingHorizontal: 16,
+              gap: 12,
+              shadowColor: "#0F172A",
+              shadowOpacity: 0.05,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 5
             }}
           >
-            <Ionicons name="filter-outline" size={18} color={selectedFolderId ? "#FFFFFF" : "#85796F"} />
-          </Pressable>
-        </View>
+            <Ionicons name="search-outline" size={17} color="#7B7F89" />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Rechercher dans vos notes..."
+              placeholderTextColor="#767A82"
+              style={[theme.typography.body, { flex: 1, color: navy, paddingVertical: 8 }]}
+            />
+            <Pressable
+              onPress={() => setShowFilters(true)}
+              style={({ pressed }) => ({
+                width: 34,
+                height: 34,
+                borderRadius: 13,
+                backgroundColor: "#F2F4F8",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.82 : 1
+              })}
+            >
+              <Ionicons name="filter-outline" size={18} color={navy} />
+            </Pressable>
+          </View>
 
-        <View style={{ gap: theme.spacing.md }}>
-          {filteredNotes.length === 0 ? (
-            hasActiveSearch ? (
-              <AppCard
-                style={{
-                  borderRadius: 28,
-                  paddingHorizontal: 20,
-                  paddingVertical: 20,
-                  backgroundColor: "#FBFAF8"
-                }}
-              >
-                <Text style={[theme.typography.h3, { color: theme.colors.text, textAlign: "center" }]}>
-                  Aucune note trouvee
-                </Text>
-                <Text
-                  style={[
-                    theme.typography.body,
-                    { color: "#7E8696", marginTop: theme.spacing.md, textAlign: "center", lineHeight: 28 }
-                  ]}
-                >
-                  Essaie un autre mot-cle, un autre dossier ou enleve certains filtres.
-                </Text>
-                <View style={{ flexDirection: "row", justifyContent: "center", gap: theme.spacing.sm, marginTop: theme.spacing.lg }}>
-                  <Pressable
-                    onPress={() => router.push("/notes/new")}
-                    style={{
-                      paddingHorizontal: 18,
-                      minHeight: 40,
-                      borderRadius: 18,
-                      backgroundColor: "#0F1B3A",
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}
-                  >
-                    <Text style={[theme.typography.label, { color: "#FFFFFF" }]}>Creer une note</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={resetFilters}
-                    style={{
-                      paddingHorizontal: 18,
-                      minHeight: 40,
-                      borderRadius: 18,
-                      backgroundColor: "#F3F0EC",
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}
-                  >
-                    <Text style={[theme.typography.label, { color: theme.colors.text }]}>Reinitialiser</Text>
-                  </Pressable>
-                </View>
-              </AppCard>
+          <Text style={[theme.typography.label, { color: "#8A8F9A", fontWeight: "900" }]}>
+            {filteredNotes.length} note{filteredNotes.length > 1 ? "s" : ""} trouvee{filteredNotes.length > 1 ? "s" : ""}
+          </Text>
+
+          <View style={{ gap: 10 }}>
+            {filteredNotes.length === 0 ? (
+              <EmptyState
+                title="Aucune note"
+                description={
+                  activeTab === "favorites"
+                    ? "Ajoute des favoris pour les retrouver ici."
+                    : activeTab === "dated"
+                      ? "Aucune note datee pour le moment."
+                      : "Cree une note pour commencer."
+                }
+              />
             ) : (
-              <EmptyState title="Aucune note" description="Essaie un autre filtre ou cree une nouvelle note." />
-            )
-          ) : (
-            filteredNotes.map((note) => <NotesListItem key={note.id} note={note} />)
-          )}
-        </View>
-
+              filteredNotes.map((note) => <NotesListItem key={note.id} note={note} />)
+            )}
+          </View>
         </View>
       </ScrollView>
 
@@ -377,13 +351,11 @@ export default function NotesScreen() {
               borderRadius: 28,
               paddingHorizontal: 20,
               paddingVertical: 20,
-              gap: theme.spacing.lg,
-              borderWidth: 1,
-              borderColor: "#F1E8E2"
+              gap: theme.spacing.lg
             }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={[theme.typography.caption, { color: "#B8AA9A", letterSpacing: 2, textTransform: "uppercase" }]}>
+              <Text style={[theme.typography.caption, { color: navy, letterSpacing: 2, textTransform: "uppercase", fontWeight: "900" }]}>
                 Filtres
               </Text>
               <Pressable
@@ -392,35 +364,33 @@ export default function NotesScreen() {
                   width: 36,
                   height: 36,
                   borderRadius: 14,
-                  backgroundColor: "#F7F4F1",
+                  backgroundColor: "#F4F5F9",
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="close" size={18} color={theme.colors.text} />
+                <Ionicons name="close" size={18} color={navy} />
               </Pressable>
             </View>
 
             <View style={{ gap: theme.spacing.sm }}>
-              <Text style={[theme.typography.label, { color: theme.colors.text }]}>Dossier</Text>
+              <Text style={[theme.typography.label, { color: navy }]}>Dossier</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
                 <Pressable
                   onPress={() => {
-                    setQuickFilter("all");
                     setSelectedFolder(null);
-                    closeDeletedIfNeeded();
                     setShowFilters(false);
                   }}
                   style={{
                     paddingHorizontal: 14,
                     minHeight: 40,
                     borderRadius: 16,
-                    backgroundColor: selectedFolderId === null ? "#0F1B3A" : "#F3F0EC",
+                    backgroundColor: selectedFolderId === null ? navy : "#F3F0EC",
                     alignItems: "center",
                     justifyContent: "center"
                   }}
                 >
-                  <Text style={[theme.typography.label, { color: selectedFolderId === null ? "#FFFFFF" : theme.colors.text }]}>
+                  <Text style={[theme.typography.label, { color: selectedFolderId === null ? "#FFFFFF" : navy }]}>
                     Tous
                   </Text>
                 </Pressable>
@@ -429,21 +399,19 @@ export default function NotesScreen() {
                   <Pressable
                     key={folder.id}
                     onPress={() => {
-                      setQuickFilter("all");
                       setSelectedFolder(folder.id);
-                      closeDeletedIfNeeded();
                       setShowFilters(false);
                     }}
                     style={{
                       paddingHorizontal: 14,
                       minHeight: 40,
                       borderRadius: 16,
-                      backgroundColor: selectedFolderId === folder.id ? "#0F1B3A" : "#F3F0EC",
+                      backgroundColor: selectedFolderId === folder.id ? navy : "#F3F0EC",
                       alignItems: "center",
                       justifyContent: "center"
                     }}
                   >
-                    <Text style={[theme.typography.label, { color: selectedFolderId === folder.id ? "#FFFFFF" : theme.colors.text }]}>
+                    <Text style={[theme.typography.label, { color: selectedFolderId === folder.id ? "#FFFFFF" : navy }]}>
                       {folder.name}
                     </Text>
                   </Pressable>
@@ -452,7 +420,7 @@ export default function NotesScreen() {
             </View>
 
             <View style={{ gap: theme.spacing.sm }}>
-              <Text style={[theme.typography.label, { color: theme.colors.text }]}>Tri</Text>
+              <Text style={[theme.typography.label, { color: navy }]}>Tri</Text>
               {[
                 { label: "Plus recentes", value: "updatedAt-desc" },
                 { label: "Plus anciennes", value: "updatedAt-asc" },
@@ -467,14 +435,14 @@ export default function NotesScreen() {
                     style={{
                       minHeight: 46,
                       borderRadius: 16,
-                      backgroundColor: isActive ? "#0F1B3A" : "#F3F0EC",
+                      backgroundColor: isActive ? navy : "#F3F0EC",
                       alignItems: "center",
                       justifyContent: "space-between",
                       flexDirection: "row",
                       paddingHorizontal: 14
                     }}
                   >
-                    <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : theme.colors.text }]}>
+                    <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : navy }]}>
                       {option.label}
                     </Text>
                     {isActive ? <Ionicons name="checkmark" size={16} color="#FFFFFF" /> : null}
@@ -488,24 +456,25 @@ export default function NotesScreen() {
 
       <Pressable
         onPress={() => router.push("/notes/new")}
-        style={{
+        style={({ pressed }) => ({
           position: "absolute",
-          right: 18,
+          right: 24,
           bottom: floatingButtonBottom,
           width: 58,
           height: 58,
-          borderRadius: 22,
-          backgroundColor: "#0F1B3A",
+          borderRadius: 21,
+          backgroundColor: navy,
           alignItems: "center",
           justifyContent: "center",
-          shadowColor: "#0F172A",
-          shadowOpacity: 0.16,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 8
-        }}
+          opacity: pressed ? 0.9 : 1,
+          shadowColor: navy,
+          shadowOpacity: 0.26,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 12
+        })}
       >
-        <Ionicons name="add" size={26} color="#FFFFFF" />
+        <Ionicons name="add" size={30} color="#FFFFFF" />
       </Pressable>
     </SafeAreaView>
   );

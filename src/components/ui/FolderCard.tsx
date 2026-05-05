@@ -1,7 +1,9 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 
 import { AppCard } from "@/components/ui/AppCard";
 import { useTheme } from "@/hooks/useTheme";
+import { getFolderIcon } from "@/services/folders/folderIcon";
 import { useNotesStore } from "@/store/useNotesStore";
 import type { Folder } from "@/types/models";
 
@@ -12,6 +14,7 @@ interface FolderCardProps {
 export function FolderCard({ folder }: FolderCardProps) {
   const theme = useTheme();
   const notesCount = useNotesStore((state) => state.notes.filter((note) => note.folderId === folder.id && !note.isDeleted).length);
+  const folderIcon = getFolderIcon(folder);
 
   return (
     <AppCard>
@@ -19,12 +22,16 @@ export function FolderCard({ folder }: FolderCardProps) {
         <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
           <View
             style={{
-              width: 12,
-              height: 12,
-              borderRadius: theme.radius.pill,
-              backgroundColor: folder.color
+              width: 40,
+              height: 40,
+              borderRadius: 16,
+              backgroundColor: folderIcon.backgroundColor,
+              alignItems: "center",
+              justifyContent: "center"
             }}
-          />
+          >
+            <Ionicons name={folderIcon.icon} size={18} color={folderIcon.color} />
+          </View>
           <View>
             <Text style={[theme.typography.h3, { color: theme.colors.text }]}>{folder.name}</Text>
             <Text style={[theme.typography.caption, { color: theme.colors.textMuted }]}>

@@ -22,6 +22,16 @@ export type NoteIconKey =
   | "music"
   | "home";
 
+export type FolderIconKey =
+  | "briefcase"
+  | "brain"
+  | "shopping"
+  | "sport"
+  | "palette"
+  | "school"
+  | "home"
+  | "code";
+
 export interface Note {
   id: string;
   title: string;
@@ -42,6 +52,7 @@ export interface Note {
 export interface Folder {
   id: string;
   name: string;
+  iconKey?: FolderIconKey | null;
   color: string;
   createdAt: string;
   updatedAt: string;

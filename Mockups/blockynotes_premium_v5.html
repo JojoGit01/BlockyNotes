@@ -1,0 +1,2360 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlockyNotes Premium — Prototype</title>
+  <style>
+    :root {
+      --bg: #f7f6f3;
+      --surface: rgba(255,255,255,.86);
+      --surface-strong: rgba(255,255,255,.96);
+      --navy: #0d1b3d;
+      --text: #17253a;
+      --muted: #8d8a92;
+      --line: rgba(13,27,61,.08);
+      --purple: #7c4dff;
+      --purple-soft: #f0e9ff;
+      --blue: #2563eb;
+      --blue-soft: #e7f0ff;
+      --green: #10b981;
+      --green-soft: #dbfbf1;
+      --orange: #f97316;
+      --orange-soft: #fff0dd;
+      --red: #ef4444;
+      --pink-soft: #fff0fa;
+      --shadow: 0 18px 50px rgba(16,24,40,.10);
+      --soft-shadow: 0 10px 30px rgba(16,24,40,.07);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top left, #ffffff 0, #f4f1ff 28%, #f7f6f3 60%, #eef4ff 100%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+    }
+
+    button, input, textarea { font: inherit; }
+    button { border: 0; cursor: pointer; }
+
+    .phone {
+      width: 390px;
+      height: 844px;
+      border: 10px solid #101828;
+      border-radius: 42px;
+      overflow: hidden;
+      position: relative;
+      background: linear-gradient(180deg, #fbfaf8 0%, #f7f6f3 100%);
+      box-shadow: 0 28px 90px rgba(10,17,35,.22);
+    }
+
+    .phone.dark {
+      --bg: #08101f;
+      --surface: rgba(18,27,48,.84);
+      --surface-strong: rgba(18,27,48,.96);
+      --navy: #f6f7fb;
+      --text: #e9edf7;
+      --muted: #9aa5bc;
+      --line: rgba(255,255,255,.09);
+      --purple-soft: rgba(124,77,255,.18);
+      --blue-soft: rgba(37,99,235,.18);
+      --green-soft: rgba(16,185,129,.18);
+      --orange-soft: rgba(249,115,22,.18);
+      --pink-soft: rgba(236,72,153,.18);
+      background: linear-gradient(180deg, #101a31 0%, #08101f 100%);
+    }
+
+    .bg-blur::before, .bg-blur::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(44px);
+      opacity: .78;
+      pointer-events: none;
+    }
+
+    .bg-blur::before {
+      width: 220px;
+      height: 220px;
+      right: -90px;
+      top: 40px;
+      background: #efe8ff;
+    }
+
+    .bg-blur::after {
+      width: 240px;
+      height: 240px;
+      left: -100px;
+      bottom: 80px;
+      background: #e6f7ff;
+    }
+
+    .page {
+      display: none;
+      height: 100%;
+      overflow-y: auto;
+      padding: 18px 20px 112px;
+      position: relative;
+      z-index: 1;
+      scrollbar-width: none;
+    }
+
+    .page::-webkit-scrollbar { display: none; }
+    .page.active { display: block; animation: pageIn .18s ease; }
+
+    @keyframes pageIn {
+      from { opacity: .45; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .status {
+      height: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 22px;
+      font-size: 16px;
+      font-weight: 850;
+      letter-spacing: -.4px;
+      color: var(--navy);
+    }
+
+    .status small { font-size: 14px; }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .eyebrow {
+      margin: 0 0 4px;
+      color: #7b6ef6;
+      font-size: 12px;
+      letter-spacing: 5.5px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--navy);
+      font-size: 42px;
+      line-height: 1;
+      letter-spacing: -2px;
+    }
+
+    .title-sm { font-size: 34px; letter-spacing: -1.4px; }
+
+    .icon-btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 20px;
+      display: grid;
+      place-items: center;
+      background: var(--surface);
+      color: var(--navy);
+      border: 1px solid rgba(255,255,255,.9);
+      box-shadow: var(--soft-shadow);
+      font-size: 24px;
+    }
+
+    .mini-btn {
+      height: 38px;
+      padding: 0 12px;
+      border-radius: 14px;
+      background: rgba(13,27,61,.05);
+      color: var(--navy);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .hero {
+      min-height: 176px;
+      border-radius: 30px;
+      padding: 22px;
+      margin-bottom: 16px;
+      color: white;
+      background: radial-gradient(circle at 85% 100%, #263a7a 0, #15234d 38%, #0d1b3d 74%);
+      box-shadow: 0 18px 40px rgba(13,27,61,.22);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -30px;
+      bottom: -70px;
+      width: 220px;
+      height: 160px;
+      border-radius: 999px;
+      border: 45px solid rgba(124,77,255,.12);
+      transform: rotate(-18deg);
+    }
+
+    .hero-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .app-icon, .avatar, .note-icon, .folder-icon {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      font-weight: 900;
+    }
+
+    .app-icon {
+      width: 68px;
+      height: 68px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+      font-size: 30px;
+      box-shadow: 0 16px 30px rgba(124,77,255,.32);
+    }
+
+    .hero h2 {
+      margin: 0;
+      font-size: 26px;
+      letter-spacing: -.9px;
+    }
+
+    .hero p {
+      margin: 4px 0 0;
+      color: rgba(255,255,255,.74);
+      font-size: 14px;
+    }
+
+    .date-pill {
+      margin-left: auto;
+      padding: 10px 13px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.12);
+      color: white;
+      font-weight: 850;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .hero-actions {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .hero-action {
+      height: 52px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.13);
+      color: white;
+      font-weight: 900;
+      backdrop-filter: blur(10px);
+    }
+
+    .hero-action.primary-hero {
+      background: white;
+      color: #0d1b3d;
+    }
+
+    .stats-card, .search, .card, .note-card, .folder-card, .sheet, .profile-card, .toolbar {
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,.9);
+      box-shadow: var(--soft-shadow);
+      backdrop-filter: blur(20px);
+    }
+
+    .stats-card {
+      border-radius: 28px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 14px 8px;
+      margin-bottom: 16px;
+    }
+
+    .stat {
+      text-align: center;
+      position: relative;
+    }
+
+    .stat:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 12px;
+      bottom: 12px;
+      width: 1px;
+      background: var(--line);
+    }
+
+    .stat-ico {
+      width: 42px;
+      height: 42px;
+      border-radius: 17px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 6px;
+      font-size: 20px;
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .stat strong {
+      display: block;
+      color: var(--navy);
+      font-size: 20px;
+      margin-top: 2px;
+    }
+
+    .search {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      border-radius: 22px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      color: var(--muted);
+    }
+
+    .search input {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    .search button {
+      width: 34px;
+      height: 34px;
+      border-radius: 14px;
+      background: rgba(13,27,61,.05);
+      color: var(--navy);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      padding: 5px;
+      border-radius: 20px;
+      background: rgba(13,27,61,.05);
+      margin-bottom: 16px;
+    }
+
+    .tab {
+      flex: 1;
+      height: 42px;
+      border-radius: 16px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 850;
+    }
+
+    .tab.active {
+      background: var(--navy);
+      color: white;
+      box-shadow: 0 10px 24px rgba(13,27,61,.16);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 8px 0 12px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      color: var(--navy);
+      font-size: 22px;
+      letter-spacing: -.7px;
+    }
+
+    .link-btn {
+      color: var(--purple);
+      background: transparent;
+      font-weight: 900;
+      font-size: 14px;
+    }
+
+    .note-list { display: grid; gap: 10px; }
+
+    .note-card {
+      width: 100%;
+      min-height: 78px;
+      border-radius: 24px;
+      padding: 13px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      text-align: left;
+      color: inherit;
+      position: relative;
+    }
+
+    .note-card.hidden { display: none; }
+
+    .note-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 18px;
+      font-size: 22px;
+    }
+
+    .i-blue { background: var(--blue-soft); color: #356cff; }
+    .i-green { background: var(--green-soft); color: #059e7d; }
+    .i-orange { background: var(--orange-soft); color: #eb742d; }
+    .i-purple { background: var(--purple-soft); color: var(--purple); }
+    .i-pink { background: var(--pink-soft); color: #db3c9c; }
+
+    .note-copy { flex: 1; min-width: 0; }
+
+    .note-copy strong {
+      display: block;
+      color: var(--navy);
+      font-size: 18px;
+      letter-spacing: -.4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 3px;
+    }
+
+    .note-copy span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .note-badges {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      padding: 5px 8px;
+      border-radius: 10px;
+      background: rgba(13,27,61,.05);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .chev {
+      color: #9a9eaa;
+      font-size: 26px;
+    }
+
+    .summary-card {
+      min-height: 154px;
+      border-radius: 30px;
+      margin-bottom: 16px;
+      padding: 20px;
+      background: radial-gradient(circle at 90% 20%, #9b7cff 0, #7c4dff 30%, #0d1b3d 100%);
+      color: white;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 18px 40px rgba(13,27,61,.20);
+    }
+
+    .summary-card::after {
+      content: "";
+      position: absolute;
+      right: -60px;
+      bottom: -70px;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      border: 38px solid rgba(255,255,255,.08);
+    }
+
+    .summary-top {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .summary-top strong {
+      display: block;
+      font-size: 30px;
+      letter-spacing: -1.2px;
+      margin-bottom: 4px;
+    }
+
+    .summary-top span {
+      display: block;
+      color: rgba(255,255,255,.74);
+      font-size: 14px;
+      line-height: 1.45;
+      max-width: 210px;
+    }
+
+    .summary-badge {
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.14);
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .summary-stats {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+
+    .stat-pill {
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.12);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .results {
+      margin: -6px 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .folder-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .folder-card {
+      min-height: 170px;
+      border-radius: 26px;
+      padding: 16px;
+      text-align: left;
+      position: relative;
+      color: inherit;
+      width: 100%;
+    }
+
+    .folder-card.new-folder {
+      border: 2px dashed rgba(124,77,255,.30);
+      background: rgba(124,77,255,.06);
+      box-shadow: none;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--purple);
+    }
+
+    .folder-card.new-folder .plus {
+      width: 52px;
+      height: 52px;
+      border-radius: 20px;
+      display: grid;
+      place-items: center;
+      font-size: 34px;
+      background: var(--purple-soft);
+      margin: 0 auto 12px;
+      font-weight: 900;
+    }
+
+    .folder-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      padding-right: 28px;
+    }
+
+    .folder-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 18px;
+      font-size: 22px;
+    }
+
+    .note-count {
+      color: var(--navy);
+      font-size: 13px;
+      font-weight: 850;
+      background: rgba(13,27,61,.05);
+      padding: 7px 9px;
+      border-radius: 12px;
+    }
+
+    .folder-card strong {
+      display: block;
+      font-size: 18px;
+      color: var(--navy);
+      letter-spacing: -.5px;
+      margin-bottom: 3px;
+      line-height: 1.2;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 13px;
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    .recent-pill {
+      display: inline-flex;
+      max-width: 100%;
+      padding: 8px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 850;
+      background: rgba(13,27,61,.05);
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .more-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 32px;
+      height: 32px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: rgba(13,27,61,.05);
+      color: var(--navy);
+      font-size: 18px;
+      z-index: 2;
+    }
+
+    .detail-head {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .detail-hero {
+      border-radius: 32px;
+      padding: 20px;
+      margin-bottom: 18px;
+      background: radial-gradient(circle at 90% 15%, #7c4dff 0, #2b3a76 48%, #0d1b3d 100%);
+      color: white;
+      box-shadow: 0 18px 40px rgba(13,27,61,.20);
+    }
+
+    .detail-icon {
+      width: 66px;
+      height: 66px;
+      border-radius: 24px;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,.14);
+      font-size: 30px;
+      margin-bottom: 16px;
+    }
+
+    .detail-hero h2 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: -1.4px;
+    }
+
+    .detail-hero p {
+      margin: 8px 0 0;
+      color: rgba(255,255,255,.74);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .stack {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .stack-pill {
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.12);
+      color: white;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .chips {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      margin-bottom: 18px;
+      padding-bottom: 2px;
+    }
+
+    .chips::-webkit-scrollbar { display: none; }
+
+    .chip {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      border-radius: 16px;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: var(--soft-shadow);
+      border: 1px solid rgba(255,255,255,.9);
+      font-weight: 850;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .chip.active {
+      background: var(--navy);
+      color: white;
+    }
+
+    .mode-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+
+    .mini-action {
+      width: 54px;
+      height: 54px;
+      border-radius: 20px;
+      display: grid;
+      place-items: center;
+      background: var(--surface);
+      color: var(--navy);
+      box-shadow: var(--soft-shadow);
+      font-size: 22px;
+    }
+
+    .mini-action.active {
+      background: var(--navy);
+      color: white;
+    }
+
+    .editor-card {
+      border-radius: 30px;
+      padding: 20px;
+      min-height: 360px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,.9);
+      box-shadow: var(--soft-shadow);
+      backdrop-filter: blur(20px);
+      margin-bottom: 14px;
+    }
+
+    .day-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      color: var(--purple);
+      font-weight: 900;
+      margin-bottom: 16px;
+    }
+
+    .note-text {
+      color: var(--text);
+      font-size: 17px;
+      line-height: 1.75;
+      outline: 0;
+      min-height: 230px;
+      white-space: pre-wrap;
+    }
+
+    .note-text:empty::before {
+      content: attr(data-placeholder);
+      color: #b1aeb4;
+    }
+
+    .all-mode .entry {
+      padding: 14px 0 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .all-mode .entry:last-child { border-bottom: 0; }
+
+    .entry-date {
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #a39b95;
+      font-weight: 900;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .todo-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 17px;
+      margin: 9px 0;
+      line-height: 1.4;
+    }
+
+    .circle-check {
+      width: 21px;
+      height: 21px;
+      border: 2px solid #c8b9ff;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+    }
+
+    .todo-item.done .circle-check {
+      background: var(--purple);
+      border-color: var(--purple);
+      color: white;
+      font-size: 12px;
+    }
+
+    .todo-item.done .circle-check::before { content: "✓"; }
+    .todo-item.done span:last-child { color: var(--muted); text-decoration: line-through; }
+
+    .toolbar {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      border-radius: 24px;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .tool {
+      height: 42px;
+      border-radius: 16px;
+      background: rgba(13,27,61,.04);
+      color: var(--navy);
+      font-weight: 900;
+      font-size: 16px;
+    }
+
+    .profile-card {
+      border-radius: 32px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .profile-main {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .avatar {
+      width: 68px;
+      height: 68px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #7c4dff, #a855f7 48%, #2563eb);
+      color: white;
+      font-size: 30px;
+      box-shadow: 0 16px 28px rgba(124,77,255,.25);
+    }
+
+    .profile-info { flex: 1; }
+    .profile-info strong { display:block; color:var(--navy); font-size:25px; letter-spacing:-.8px; }
+    .profile-info span { display:block; color:var(--muted); font-size:14px; }
+
+    .premium-pill {
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: var(--purple-soft);
+      color: var(--purple);
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .mini-card {
+      min-height: 92px;
+      padding: 14px;
+      border-radius: 24px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,.9);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .mini-card .emoji { font-size: 22px; margin-bottom: 8px; }
+    .mini-card strong { display:block; color:var(--navy); font-size:15px; }
+    .mini-card span { color:var(--muted); font-size:12px; }
+
+    .section-card {
+      border-radius: 32px;
+      padding: 14px;
+      margin-bottom: 16px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,.9);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .section-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 12px;
+      margin: 0 0 8px;
+      border-radius: 999px;
+      background: var(--purple-soft);
+      color: #5b35e8;
+      font-size: 12px;
+      letter-spacing: 1.4px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .row {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 13px 4px;
+      color: inherit;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+
+    .row:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      left: 74px;
+      right: 4px;
+      bottom: 0;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .row-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      flex: 0 0 auto;
+    }
+
+    .row-copy { flex:1; min-width:0; }
+    .row-copy strong { display:block; color:var(--navy); font-size:18px; letter-spacing:-.4px; margin-bottom:2px; }
+    .row-copy span { display:block; color:var(--muted); font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    .switch {
+      width: 54px;
+      height: 32px;
+      border-radius: 999px;
+      background: #d9d9e2;
+      padding: 4px;
+      flex: 0 0 auto;
+      transition: .2s;
+    }
+
+    .switch.on { background: linear-gradient(135deg, #7c4dff, #2563eb); }
+
+    .knob {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 4px 10px rgba(0,0,0,.18);
+      transform: translateX(0);
+      transition: .2s;
+    }
+
+    .switch.on .knob { transform: translateX(22px); }
+
+    .empty-state {
+      display: none;
+      border-radius: 30px;
+      padding: 28px 18px;
+      text-align: center;
+      margin-top: 16px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,.9);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .empty-state.show { display: block; }
+
+    .empty-icon {
+      width: 74px;
+      height: 74px;
+      border-radius: 26px;
+      background: var(--purple-soft);
+      color: var(--purple);
+      font-size: 34px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 16px;
+    }
+
+    .empty-state strong {
+      display: block;
+      color: var(--navy);
+      font-size: 22px;
+      margin-bottom: 8px;
+      letter-spacing: -.5px;
+    }
+
+    .empty-state p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .fab {
+      position: absolute;
+      z-index: 26;
+      right: 24px;
+      bottom: 108px;
+      width: 64px;
+      height: 64px;
+      border-radius: 24px;
+      color: white;
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      font-size: 40px;
+      line-height: 1;
+      box-shadow: 0 20px 36px rgba(124,77,255,.34);
+    }
+
+    .bottom-nav {
+      position: absolute;
+      z-index: 25;
+      left: 16px;
+      right: 16px;
+      bottom: 18px;
+      height: 78px;
+      border-radius: 28px;
+      background: var(--surface-strong);
+      backdrop-filter: blur(22px);
+      box-shadow: 0 18px 50px rgba(16,24,40,.13);
+      border: 1px solid rgba(255,255,255,.9);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      align-items: center;
+    }
+
+    .nav-item {
+      text-align: center;
+      color: #858899;
+      font-size: 12px;
+      font-weight: 750;
+      background: transparent;
+    }
+
+    .nav-icon {
+      width: 42px;
+      height: 42px;
+      margin: 0 auto 2px;
+      display: grid;
+      place-items: center;
+      font-size: 23px;
+      border-radius: 18px;
+    }
+
+    .nav-item.active { color: var(--navy); }
+
+    .nav-item.active .nav-icon {
+      color: white;
+      background: var(--navy);
+      box-shadow: 0 12px 24px rgba(13,27,61,.24);
+    }
+
+    .overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      background: rgba(13,17,28,.28);
+      backdrop-filter: blur(4px);
+    }
+
+    .overlay.active { display: block; }
+
+    .sheet {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 60;
+      border-radius: 34px 34px 0 0;
+      padding: 14px 22px 24px;
+      transform: translateY(110%);
+      transition: .25s ease;
+      max-height: 82%;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+
+    .sheet::-webkit-scrollbar { display: none; }
+    .sheet.active { transform: translateY(0); }
+
+    .handle {
+      width: 48px;
+      height: 5px;
+      background: #c9c9d2;
+      border-radius: 999px;
+      margin: 0 auto 20px;
+    }
+
+    .sheet h3 {
+      margin: 0 0 20px;
+      color: var(--navy);
+      font-size: 28px;
+      letter-spacing: -.9px;
+    }
+
+    .field { margin-bottom: 18px; }
+
+    .field label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 850;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+    }
+
+    .text-input {
+      width: 100%;
+      height: 56px;
+      border-radius: 20px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      outline: none;
+      background: rgba(247,246,243,.7);
+      color: var(--navy);
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .phone.dark .text-input { background: rgba(255,255,255,.05); }
+
+    .picker-row, .create-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .create-grid { grid-template-columns: 1fr 1fr; }
+
+    .create-option {
+      min-height: 112px;
+      border-radius: 24px;
+      background: rgba(13,27,61,.04);
+      color: inherit;
+      padding: 14px;
+      text-align: left;
+    }
+
+    .create-option .opt-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 12px;
+      font-size: 22px;
+    }
+
+    .create-option strong {
+      display: block;
+      color: var(--navy);
+      font-size: 16px;
+      margin-bottom: 3px;
+    }
+
+    .create-option span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .picker-scroll {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+
+    .picker-scroll::-webkit-scrollbar { display: none; }
+
+    .pick {
+      width: 50px;
+      height: 50px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      font-size: 23px;
+      background: var(--surface-strong);
+      color: var(--navy);
+      border: 2px solid transparent;
+      box-shadow: var(--soft-shadow);
+      flex: 0 0 auto;
+    }
+
+    .pick.active {
+      border-color: var(--purple);
+      transform: translateY(-2px);
+    }
+
+    .sheet-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .primary, .secondary {
+      height: 56px;
+      border-radius: 20px;
+      font-weight: 900;
+      font-size: 16px;
+    }
+
+    .primary {
+      background: var(--navy);
+      color: white;
+      box-shadow: 0 14px 28px rgba(13,27,61,.22);
+    }
+
+    .secondary {
+      background: var(--surface-strong);
+      color: var(--navy);
+      border: 1px solid var(--line);
+    }
+
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px 6px;
+      text-align: center;
+      margin-bottom: 18px;
+    }
+
+    .dow {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .day {
+      height: 38px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      color: var(--text);
+      font-size: 16px;
+      background: transparent;
+    }
+
+    .day.muted { color: #c2c2c8; }
+    .day.weekend { color: var(--purple); }
+
+    .day.selected {
+      background: var(--navy);
+      color: white;
+      box-shadow: 0 12px 22px rgba(13,27,61,.2);
+      font-weight: 900;
+    }
+
+    .month-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .month-bar strong {
+      font-size: 19px;
+      color: var(--navy);
+    }
+
+    .round-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 17px;
+      background: var(--surface);
+      color: var(--navy);
+      font-size: 25px;
+      box-shadow: var(--soft-shadow);
+    }
+
+    .toast {
+      position: absolute;
+      z-index: 90;
+      left: 26px;
+      right: 26px;
+      bottom: 112px;
+      background: var(--navy);
+      color: white;
+      padding: 14px 16px;
+      border-radius: 18px;
+      font-weight: 850;
+      text-align: center;
+      box-shadow: 0 16px 30px rgba(13,27,61,.22);
+      transform: translateY(30px);
+      opacity: 0;
+      pointer-events: none;
+      transition: .25s;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .home-indicator {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 6px;
+      width: 120px;
+      height: 4px;
+      border-radius: 999px;
+      background: #101828;
+      opacity: .8;
+      z-index: 30;
+    }
+
+    .onboarding {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 100;
+      padding: 28px;
+      background: radial-gradient(circle at top, #f4f1ff, #fbfaf8 56%, #eef4ff);
+      place-items: center;
+    }
+
+    .onboarding.active { display: grid; }
+
+    .on-card {
+      width: 100%;
+      border-radius: 34px;
+      padding: 24px;
+      background: rgba(255,255,255,.86);
+      box-shadow: 0 24px 70px rgba(13,27,61,.18);
+      text-align: center;
+    }
+
+    .on-logo {
+      width: 88px;
+      height: 88px;
+      border-radius: 30px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 18px;
+      background: linear-gradient(135deg, #8b5cf6, #2563eb);
+      color: white;
+      font-size: 40px;
+      font-weight: 900;
+    }
+
+    .on-card h2 {
+      color: #0d1b3d;
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: -1.5px;
+      margin: 0 0 10px;
+    }
+
+    .on-card p {
+      color: #71717a;
+      line-height: 1.55;
+      margin: 0 0 22px;
+    }
+
+    @media (max-width: 430px) {
+      body { place-items: stretch; background: #101828; }
+      .phone {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        border: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone" id="phone">
+    <div class="bg-blur"></div>
+
+    <section class="onboarding active" id="onboarding">
+      <div class="on-card">
+        <div class="on-logo">✦</div>
+        <h2>Bienvenue sur BlockyNotes</h2>
+        <p>Des notes simples, des dossiers propres, et un mode jour par jour pour suivre tes idées dans le temps.</p>
+        <button class="primary" style="width:100%;" onclick="closeOnboarding()">Créer ma première note</button>
+      </div>
+    </section>
+
+    <section class="page active" id="homePage">
+      <div class="status"><div>19:45</div><small>▴▴ Wi‑Fi <strong>73</strong></small></div>
+
+      <header class="top">
+        <div>
+          <p class="eyebrow">Bonjour</p>
+          <h1>Jo</h1>
+        </div>
+        <button class="icon-btn" onclick="showPage('settingsPage')">◉</button>
+      </header>
+
+      <section class="hero">
+        <div class="hero-row">
+          <div class="app-icon">✦</div>
+          <div>
+            <h2>BlockyNotes</h2>
+            <p>Notes, journal & dossiers.</p>
+          </div>
+          <div class="date-pill">Premium</div>
+        </div>
+        <div class="hero-actions">
+          <button class="hero-action primary-hero" onclick="openCreateSheet()">＋ Nouvelle note</button>
+          <button class="hero-action" onclick="showPage('notesPage')">Voir mes notes</button>
+        </div>
+      </section>
+
+      <section class="stats-card">
+        <div class="stat"><div class="stat-ico i-purple">▣</div><span>Notes</span><strong id="statNotesHome">3</strong></div>
+        <div class="stat"><div class="stat-ico i-orange">★</div><span>Favoris</span><strong id="favCount">1</strong></div>
+        <div class="stat"><div class="stat-ico i-green">▭</div><span>Dossiers</span><strong id="statFoldersHome">4</strong></div>
+        <div class="stat"><div class="stat-ico i-blue">◷</div><span>Datées</span><strong>2</strong></div>
+      </section>
+
+      <label class="search">
+        <span>⌕</span>
+        <input placeholder="Recherche globale..." oninput="filterNotes(this.value)" />
+        <button onclick="showToast('Recherche dans titres, contenus et dossiers')">☷</button>
+      </label>
+
+      <div class="section-head">
+        <h2>Épinglées</h2>
+        <button class="link-btn" onclick="showPage('notesPage')">Voir tout</button>
+      </div>
+      <div class="note-list" id="homePinned"></div>
+
+      <div class="section-head">
+        <h2>Récemment modifiées</h2>
+        <button class="link-btn" onclick="showPage('notesPage')">Voir tout</button>
+      </div>
+      <div class="note-list" id="homeRecent"></div>
+    </section>
+
+    <section class="page" id="notesPage">
+      <div class="status"><div>19:46</div><small>▴▴ Wi‑Fi <strong>73</strong></small></div>
+      <header class="top">
+        <div>
+          <p class="eyebrow">Bibliothèque</p>
+          <h1>Notes</h1>
+        </div>
+        <button class="icon-btn" onclick="openCreateSheet()">＋</button>
+      </header>
+
+      <div class="tabs">
+        <button class="tab active" onclick="setNoteFilter('all', this)">Toutes</button>
+        <button class="tab" onclick="setNoteFilter('favorites', this)">Favoris</button>
+        <button class="tab" onclick="setNoteFilter('dated', this)">Datées</button>
+      </div>
+
+      <label class="search">
+        <span>⌕</span>
+        <input id="notesSearch" placeholder="Rechercher dans vos notes..." oninput="filterNotes(this.value)" />
+        <button onclick="showToast('Tri: plus récent')">↕</button>
+      </label>
+
+      <div class="results" id="notesResults">3 notes trouvées</div>
+      <div class="note-list" id="notesList"></div>
+
+      <section class="empty-state" id="notesEmpty">
+        <div class="empty-icon">📝</div>
+        <strong>Aucune note trouvée</strong>
+        <p>Essaie une autre recherche ou crée une nouvelle note.</p>
+        <button class="primary" onclick="openCreateSheet()">Créer une note</button>
+      </section>
+    </section>
+
+    <section class="page" id="foldersPage">
+      <div class="status"><div>19:58</div><small>▴▴ Wi‑Fi <strong>73</strong></small></div>
+
+      <header class="top">
+        <div>
+          <p class="eyebrow">Organisation</p>
+          <h1>Dossiers</h1>
+        </div>
+        <button class="icon-btn" onclick="openFolderSheet()">＋</button>
+      </header>
+
+      <section class="summary-card">
+        <div class="summary-top">
+          <div>
+            <strong id="summaryTitle">4 dossiers</strong>
+            <span id="summaryMeta">6 notes au total · Dernière modif aujourd’hui</span>
+          </div>
+          <div class="summary-badge">Propre</div>
+        </div>
+        <div class="summary-stats">
+          <div class="stat-pill" id="statFolders">4 dossiers</div>
+          <div class="stat-pill" id="statNotes">6 notes</div>
+          <div class="stat-pill">Tri par récents</div>
+        </div>
+      </section>
+
+      <label class="search">
+        <span>⌕</span>
+        <input id="folderSearch" placeholder="Rechercher un dossier..." oninput="filterFolders(this.value)" />
+        <button type="button" onclick="showToast('Tri: plus récents')">☷</button>
+      </label>
+
+      <div class="results" id="folderResults">4 dossiers trouvés</div>
+      <div class="folder-grid" id="folderGrid"></div>
+
+      <section class="empty-state" id="folderEmpty">
+        <div class="empty-icon">▭</div>
+        <strong>Aucun dossier trouvé</strong>
+        <p>Crée ton premier dossier pour organiser tes notes, ou essaie une autre recherche.</p>
+        <button class="primary" onclick="openFolderSheet()">Créer un dossier</button>
+      </section>
+    </section>
+
+    <section class="page" id="folderDetailPage">
+      <div class="status"><div>19:59</div><small>▴▴ Wi‑Fi <strong>73</strong></small></div>
+
+      <div class="detail-head">
+        <button class="icon-btn" onclick="showPage('foldersPage')">←</button>
+        <div style="flex:1"></div>
+        <button class="icon-btn" onclick="openFolderOptions(currentFolderId)">⋯</button>
+      </div>
+
+      <section class="detail-hero">
+        <div class="detail-icon" id="folderDetailIcon">▭</div>
+        <h2 id="folderDetailTitle">Personnel</h2>
+        <p id="folderDetailMeta">3 notes dans ce dossier · Modifié aujourd’hui</p>
+        <div class="stack" id="folderDetailStack"></div>
+      </section>
+
+      <div class="section-head">
+        <h2>Notes du dossier</h2>
+        <button class="link-btn" onclick="createTypedNote('normal')">+ Note</button>
+      </div>
+
+      <div class="note-list" id="folderDetailNotes"></div>
+    </section>
+
+    <section class="page" id="detailPage">
+      <div class="status"><div>20:21</div><small>▴▴ Wi‑Fi <strong>70</strong></small></div>
+
+      <div class="detail-head">
+        <button class="icon-btn" onclick="showPage(lastListPage)">←</button>
+        <div style="flex:1"></div>
+        <button class="icon-btn" id="pinBtn" onclick="togglePin()">⌖</button>
+        <button class="icon-btn" id="favBtn" onclick="toggleFavorite()">★</button>
+        <button class="icon-btn" onclick="openNoteOptions()">⋯</button>
+      </div>
+
+      <p class="eyebrow">Note</p>
+
+      <div style="display:flex;align-items:center;gap:16px;margin:22px 0 16px;">
+        <div class="detail-icon" id="detailIcon" style="margin:0;background:var(--orange-soft);color:var(--orange);">☊</div>
+        <h1 class="title-sm" id="detailTitle">Courses</h1>
+        <div class="mode-actions">
+          <button class="mini-action" id="dayToggle" onclick="setNoteMode('day')">▦</button>
+          <button class="mini-action active" id="allToggle" onclick="setNoteMode('all')">▤</button>
+        </div>
+      </div>
+
+      <div class="chips">
+        <button class="chip active" onclick="openCalendarSheet()">▦ <span id="dateChip">Jeu 30</span></button>
+        <button class="chip">⌑ <span id="tagChip">Perso</span></button>
+        <button class="chip">☁ Autosave</button>
+      </div>
+
+      <div class="editor-card">
+        <div id="dayMode">
+          <div class="day-title" id="dayTitle">Jeudi 30 avril</div>
+          <div class="note-text" contenteditable="true" data-placeholder="Écris quelque chose pour aujourd’hui..." id="dayEditor"></div>
+        </div>
+
+        <div id="allMode" class="all-mode"></div>
+      </div>
+
+      <div class="toolbar">
+        <button class="tool" onclick="formatText('bold')">B</button>
+        <button class="tool" onclick="formatText('italic')">I</button>
+        <button class="tool" onclick="addChecklist()">✓</button>
+        <button class="tool" onclick="addBullet()">•</button>
+        <button class="tool" onclick="addHeading()">#</button>
+        <button class="tool" onclick="showToast('Pièce jointe bientôt')">📎</button>
+        <button class="tool" onclick="showToast('Couleur de note bientôt')">🎨</button>
+      </div>
+    </section>
+
+    <section class="page" id="settingsPage">
+      <div class="status"><div>05:00</div><small>▴▴ Wi‑Fi <strong>73</strong></small></div>
+      <header class="top">
+        <div>
+          <p class="eyebrow">Personnalisation</p>
+          <h1>Réglages</h1>
+        </div>
+        <button class="icon-btn">⚙</button>
+      </header>
+
+      <section class="profile-card">
+        <div class="profile-main">
+          <div class="avatar">J</div>
+          <div class="profile-info"><strong>Jo</strong><span>Ton espace de notes personnel</span></div>
+          <div class="premium-pill">Premium</div>
+        </div>
+      </section>
+
+      <div class="quick-grid">
+        <div class="mini-card"><div class="emoji">📝</div><strong id="settingsNotesCount">3 notes</strong><span>Actives aujourd’hui</span></div>
+        <div class="mini-card"><div class="emoji">☁️</div><strong>Synchro OK</strong><span>Sauvegardé à l’instant</span></div>
+      </div>
+
+      <section class="section-card">
+        <p class="section-title">☷ Préférences</p>
+        <button class="row" onclick="toggleDarkMode()">
+          <div class="row-icon i-purple">🎨</div><div class="row-copy"><strong>Thème</strong><span id="themeText">Light premium</span></div><div class="chev">›</div>
+        </button>
+        <button class="row" onclick="toggleSwitch('backupSwitch')">
+          <div class="row-icon i-blue">☁</div><div class="row-copy"><strong>Sauvegarde</strong><span>Activée automatiquement</span></div><div class="switch on" id="backupSwitch"><div class="knob"></div></div>
+        </button>
+        <button class="row" onclick="toggleSwitch('notifSwitch')">
+          <div class="row-icon i-orange">🔔</div><div class="row-copy"><strong>Notifications</strong><span>Rappels sur les notes</span></div><div class="switch" id="notifSwitch"><div class="knob"></div></div>
+        </button>
+      </section>
+
+      <section class="section-card">
+        <p class="section-title">✦ Notes</p>
+        <button class="row" onclick="showToast('Export PDF lancé')">
+          <div class="row-icon i-green">📤</div><div class="row-copy"><strong>Exporter mes notes</strong><span>PDF, Markdown, texte brut</span></div><div class="chev">›</div>
+        </button>
+        <button class="row" onclick="showToast('Verrouillage activable plus tard')">
+          <div class="row-icon i-pink">🔒</div><div class="row-copy"><strong>Verrouillage</strong><span>Code ou empreinte pour ouvrir l’app</span></div><div class="chev">›</div>
+        </button>
+        <button class="row" onclick="showToast('Corbeille ouverte')">
+          <div class="row-icon i-orange">🗑</div><div class="row-copy"><strong>Corbeille</strong><span>Notes supprimées récemment</span></div><div class="chev">›</div>
+        </button>
+      </section>
+    </section>
+
+    <button class="fab" id="fab" onclick="openCreateSheet()">＋</button>
+
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-page="homePage" onclick="showPage('homePage')"><div class="nav-icon">⌂</div>Accueil</button>
+      <button class="nav-item" data-page="notesPage" onclick="showPage('notesPage')"><div class="nav-icon">☰</div>Notes</button>
+      <button class="nav-item" data-page="foldersPage" onclick="showPage('foldersPage')"><div class="nav-icon">▦</div>Dossiers</button>
+      <button class="nav-item" data-page="settingsPage" onclick="showPage('settingsPage')"><div class="nav-icon">⚙</div>Réglages</button>
+    </nav>
+
+    <div class="overlay" id="overlay" onclick="closeSheets()"></div>
+
+    <section class="sheet" id="createSheet">
+      <div class="handle"></div>
+      <h3>Créer</h3>
+      <div class="create-grid">
+        <button class="create-option" onclick="createTypedNote('normal')">
+          <div class="opt-icon i-blue">📝</div>
+          <strong>Nouvelle note</strong>
+          <span>Une page simple pour écrire vite.</span>
+        </button>
+        <button class="create-option" onclick="createTypedNote('checklist')">
+          <div class="opt-icon i-green">✓</div>
+          <strong>Checklist</strong>
+          <span>Courses, tâches, préparation.</span>
+        </button>
+        <button class="create-option" onclick="createTypedNote('dated')">
+          <div class="opt-icon i-purple">▦</div>
+          <strong>Note datée</strong>
+          <span>Jour par jour avec calendrier.</span>
+        </button>
+        <button class="create-option" onclick="openFolderSheet()">
+          <div class="opt-icon i-orange">▭</div>
+          <strong>Dossier</strong>
+          <span>Organiser tes notes.</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="sheet" id="folderSheet">
+      <div class="handle"></div>
+      <h3>Créer un dossier</h3>
+
+      <div class="field">
+        <label for="folderName">Nom du dossier</label>
+        <input class="text-input" id="folderName" placeholder="Ex : Travail, Sport, Idées..." maxlength="22" />
+      </div>
+
+      <div class="field">
+        <label>Icône</label>
+        <div class="picker-scroll" id="iconPicker">
+          <button class="pick active" data-icon="💼" onclick="selectFolderIcon(this)">💼</button>
+          <button class="pick" data-icon="🧠" onclick="selectFolderIcon(this)">🧠</button>
+          <button class="pick" data-icon="🛒" onclick="selectFolderIcon(this)">🛒</button>
+          <button class="pick" data-icon="💪" onclick="selectFolderIcon(this)">💪</button>
+          <button class="pick" data-icon="🎨" onclick="selectFolderIcon(this)">🎨</button>
+          <button class="pick" data-icon="📚" onclick="selectFolderIcon(this)">📚</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Couleur</label>
+        <div class="picker-scroll" id="colorPicker">
+          <button class="pick i-blue active" data-color="i-blue" onclick="selectFolderColor(this)">●</button>
+          <button class="pick i-purple" data-color="i-purple" onclick="selectFolderColor(this)">●</button>
+          <button class="pick i-green" data-color="i-green" onclick="selectFolderColor(this)">●</button>
+          <button class="pick i-orange" data-color="i-orange" onclick="selectFolderColor(this)">●</button>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="secondary" onclick="closeSheets()">Annuler</button>
+        <button class="primary" onclick="createFolder()">Créer</button>
+      </div>
+    </section>
+
+    <section class="sheet" id="noteOptionsSheet">
+      <div class="handle"></div>
+      <h3>Options de note</h3>
+      <button class="row" onclick="toggleFavorite(); closeSheets()">
+        <div class="row-icon i-purple">★</div><div class="row-copy"><strong>Favori</strong><span>Retrouver cette note plus vite</span></div>
+      </button>
+      <button class="row" onclick="togglePin(); closeSheets()">
+        <div class="row-icon i-blue">⌖</div><div class="row-copy"><strong>Épingler</strong><span>Garder en haut de l’accueil</span></div>
+      </button>
+      <button class="row" onclick="showToast('Rappel ajouté'); closeSheets()">
+        <div class="row-icon i-orange">🔔</div><div class="row-copy"><strong>Ajouter un rappel</strong><span>Recevoir une notification</span></div>
+      </button>
+      <button class="row" onclick="archiveCurrentNote()">
+        <div class="row-icon i-green">▤</div><div class="row-copy"><strong>Archiver</strong><span>Masquer sans supprimer</span></div>
+      </button>
+      <button class="row" onclick="deleteCurrentNote()">
+        <div class="row-icon i-pink">🗑</div><div class="row-copy"><strong style="color:var(--red);">Supprimer</strong><span>Envoyer dans la corbeille</span></div>
+      </button>
+    </section>
+
+    <section class="sheet" id="folderOptionsSheet">
+      <div class="handle"></div>
+      <h3>Options du dossier</h3>
+      <button class="row" onclick="renameFolder()">
+        <div class="row-icon i-purple">✎</div><div class="row-copy"><strong>Renommer</strong><span>Changer le nom du dossier</span></div>
+      </button>
+      <button class="row" onclick="showToast('Personnalisation bientôt éditable'); closeSheets()">
+        <div class="row-icon i-blue">🎨</div><div class="row-copy"><strong>Changer icône / couleur</strong><span>Modifier le style du dossier</span></div>
+      </button>
+      <button class="row" onclick="showToast('Déplacement bientôt'); closeSheets()">
+        <div class="row-icon i-orange">↪</div><div class="row-copy"><strong>Déplacer les notes</strong><span>Envoyer vers un autre dossier</span></div>
+      </button>
+      <button class="row" onclick="deleteFolder()">
+        <div class="row-icon i-pink">🗑</div><div class="row-copy"><strong style="color:var(--red);">Supprimer</strong><span>Supprimer ce dossier</span></div>
+      </button>
+    </section>
+
+    <section class="sheet" id="calendarSheet">
+      <div class="handle"></div>
+      <h3>Changer la date</h3>
+      <div class="month-bar">
+        <button class="round-btn" onclick="showToast('Mois précédent')">‹</button>
+        <strong>Avril 2025</strong>
+        <button class="round-btn" onclick="showToast('Mois suivant')">›</button>
+      </div>
+      <div class="calendar" id="calendarGrid"></div>
+      <div class="sheet-actions">
+        <button class="secondary" onclick="selectCalendarDay(30, 'Jeu 30', 'Jeudi 30 avril')">Aujourd’hui</button>
+        <button class="primary" onclick="closeSheets(); showToast('Date validée')">Valider</button>
+      </div>
+    </section>
+
+    <div class="toast" id="toast">Action</div>
+    <div class="home-indicator"></div>
+  </main>
+
+  <script>
+    let lastListPage = 'homePage';
+    let currentNoteId = 'courses';
+    let currentFolderId = 'personal';
+    let selectedFolderIcon = '💼';
+    let selectedFolderColor = 'i-blue';
+    let currentNoteFilter = 'all';
+    let toastTimer;
+
+    const notes = [
+      {
+        id: 'sport',
+        title: 'Programme / Sport',
+        icon: '⚽',
+        color: 'i-blue',
+        tag: 'Sport',
+        folderId: 'sport',
+        type: 'dated',
+        dateChip: 'Mer 29',
+        dayTitle: 'Mercredi 29 avril',
+        favorite: true,
+        pinned: true,
+        archived: false,
+        content: `• Traction lestée semi : 22,5 x6 x3 ou 25 x4 x4 + 15-20 x6 x1
+• Muscle-up : objectif : 3 clean form
+• Bench semi : 117,5 x6 x3 ou 120 x5 x3`,
+        entries: [
+          { date: 'Mercredi 29 avril', text: 'Traction lestée semi · Muscle-up · Bench semi' },
+          { date: 'Samedi 26 avril', text: 'Repos actif + mobilité' }
+        ]
+      },
+      {
+        id: 'courses',
+        title: 'Courses',
+        icon: '🛒',
+        color: 'i-orange',
+        tag: 'Perso',
+        folderId: 'shopping',
+        type: 'checklist',
+        dateChip: 'Jeu 30',
+        dayTitle: 'Jeudi 30 avril',
+        favorite: false,
+        pinned: false,
+        archived: false,
+        content: '',
+        checklist: ['Pain de mie', 'Pâtes', 'Coca', 'Légumes', 'Jambon', 'Chocolat noir', 'Fromage blanc'],
+        entries: [
+          { date: 'Jeudi 30 avril', text: 'Pain de mie · Pâtes · Coca · Légumes' },
+          { date: 'Samedi 14 mars', text: 'Ancienne liste de courses' }
+        ]
+      },
+      {
+        id: 'figma',
+        title: 'Projet Figma',
+        icon: '🎨',
+        color: 'i-green',
+        tag: 'Projet',
+        folderId: 'projects',
+        type: 'normal',
+        dateChip: 'Ven 1',
+        dayTitle: 'Vendredi 1 mai',
+        favorite: false,
+        pinned: false,
+        archived: false,
+        content: `Refonte du dashboard et composants UI.
+
+À faire :
+• Harmoniser les cards
+• Revoir les icônes
+• Créer un composant bottom sheet
+• Préparer les couleurs du thème premium`,
+        entries: [
+          { date: 'Vendredi 1 mai', text: 'Refonte dashboard et composants UI' }
+        ]
+      }
+    ];
+
+    const folders = [
+      { id: 'personal', name: 'Personnel', icon: '▭', color: 'i-blue', modified: 'Modifié aujourd’hui' },
+      { id: 'shopping', name: 'Courses', icon: '🛒', color: 'i-orange', modified: 'Modifié hier' },
+      { id: 'projects', name: 'Projets', icon: '🎨', color: 'i-green', modified: 'Modifié vendredi' },
+      { id: 'sport', name: 'Sport', icon: '💪', color: 'i-purple', modified: 'Modifié mercredi' }
+    ];
+
+    function $(id) { return document.getElementById(id); }
+
+    function escapeHtml(text = '') {
+      return String(text).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+      }[c]));
+    }
+
+    function closeOnboarding() {
+      $('onboarding').classList.remove('active');
+      openCreateSheet();
+    }
+
+    function showPage(id) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      $(id).classList.add('active');
+
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === id));
+
+      const fab = $('fab');
+      fab.style.display = (id === 'homePage' || id === 'notesPage' || id === 'foldersPage') ? 'block' : 'none';
+
+      if (id === 'homePage') renderHome();
+      if (id === 'notesPage') renderNotes();
+      if (id === 'foldersPage') renderFolders();
+
+      if (id !== 'detailPage') closeSheets();
+    }
+
+    function noteTypeLabel(type) {
+      return type === 'dated' ? 'Jour par jour' : type === 'checklist' ? 'Checklist' : 'Note';
+    }
+
+    function noteDesc(note) {
+      if (note.type === 'checklist') return `${note.checklist?.length || 0} éléments · ${note.dayTitle}`;
+      if (note.type === 'dated') return `${note.dayTitle} · Mode jour par jour`;
+      return note.content.split('\n')[0] || 'Note simple';
+    }
+
+    function renderNoteCard(note, compact = false) {
+      return `
+        <button class="note-card" data-search="${escapeHtml((note.title + ' ' + note.tag + ' ' + note.content).toLowerCase())}" onclick="openNote('${note.id}')">
+          <div class="note-icon ${note.color}">${escapeHtml(note.icon)}</div>
+          <div class="note-copy">
+            <strong>${escapeHtml(note.title)}</strong>
+            <span>${escapeHtml(noteDesc(note))}</span>
+            ${compact ? '' : `<div class="note-badges"><div class="badge">${noteTypeLabel(note.type)}</div>${note.favorite ? '<div class="badge">★ Favori</div>' : ''}${note.pinned ? '<div class="badge">⌖ Épinglée</div>' : ''}</div>`}
+          </div>
+          <div class="chev">›</div>
+        </button>
+      `;
+    }
+
+    function renderHome() {
+      const activeNotes = notes.filter(n => !n.archived);
+      $('statNotesHome').textContent = activeNotes.length;
+      $('statFoldersHome').textContent = folders.length;
+      $('favCount').textContent = activeNotes.filter(n => n.favorite).length;
+      $('homePinned').innerHTML = activeNotes.filter(n => n.pinned).map(n => renderNoteCard(n, true)).join('') || renderEmptyMini('Aucune note épinglée');
+      $('homeRecent').innerHTML = activeNotes.slice(0, 3).map(n => renderNoteCard(n, true)).join('');
+    }
+
+    function renderEmptyMini(text) {
+      return `<div class="note-card"><div class="note-icon i-purple">✦</div><div class="note-copy"><strong>${text}</strong><span>Ajoute une note en favori ou épingle-la.</span></div></div>`;
+    }
+
+    function renderNotes(query = $('notesSearch')?.value || '') {
+      const q = query.trim().toLowerCase();
+      let list = notes.filter(n => !n.archived);
+
+      if (currentNoteFilter === 'favorites') list = list.filter(n => n.favorite);
+      if (currentNoteFilter === 'dated') list = list.filter(n => n.type === 'dated');
+
+      list = list.filter(n => {
+        const hay = `${n.title} ${n.tag} ${n.content} ${n.checklist?.join(' ') || ''}`.toLowerCase();
+        return !q || hay.includes(q);
+      });
+
+      $('notesList').innerHTML = list.map(n => renderNoteCard(n)).join('');
+      $('notesResults').textContent = `${list.length} note${list.length > 1 ? 's' : ''} trouvée${list.length > 1 ? 's' : ''}`;
+      $('notesEmpty').classList.toggle('show', list.length === 0);
+      $('settingsNotesCount').textContent = `${notes.filter(n => !n.archived).length} notes`;
+    }
+
+    function filterNotes(q) {
+      if ($('notesPage').classList.contains('active')) renderNotes(q);
+      document.querySelectorAll('#homePinned .note-card, #homeRecent .note-card').forEach(card => {
+        const hay = (card.dataset.search || card.textContent).toLowerCase();
+        card.classList.toggle('hidden', q && !hay.includes(q.toLowerCase()));
+      });
+    }
+
+    function setNoteFilter(type, btn) {
+      currentNoteFilter = type;
+      document.querySelectorAll('#notesPage .tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      renderNotes();
+    }
+
+    function renderFolders(query = $('folderSearch')?.value || '') {
+      const q = query.trim().toLowerCase();
+      const filtered = folders.filter(folder => {
+        const hay = `${folder.name} ${folder.modified}`.toLowerCase();
+        return !q || hay.includes(q);
+      });
+
+      $('folderGrid').innerHTML = filtered.map(folder => {
+        const folderNotes = notes.filter(n => n.folderId === folder.id && !n.archived);
+        const recent = folderNotes[0]?.title || 'Aucune note';
+        return `
+          <button class="folder-card" onclick="openFolderDetail('${folder.id}')">
+            <button class="more-btn" onclick="event.stopPropagation(); openFolderOptions('${folder.id}')">⋯</button>
+            <div class="folder-top">
+              <div class="folder-icon ${folder.color}">${escapeHtml(folder.icon)}</div>
+              <div class="note-count">${folderNotes.length} note${folderNotes.length > 1 ? 's' : ''}</div>
+            </div>
+            <strong>${escapeHtml(folder.name)}</strong>
+            <span class="sub">${escapeHtml(folder.modified)}</span>
+            <div class="recent-pill">${escapeHtml(recent)}</div>
+          </button>
+        `;
+      }).join('') + `
+        <button class="folder-card new-folder" onclick="openFolderSheet()">
+          <div>
+            <div class="plus">＋</div>
+            <strong>Nouveau dossier</strong>
+            <span class="sub" style="margin:0;color:var(--purple);">Organiser mes notes</span>
+          </div>
+        </button>
+      `;
+
+      const totalNotes = notes.filter(n => !n.archived).length;
+      $('summaryTitle').textContent = `${folders.length} dossiers`;
+      $('summaryMeta').textContent = `${totalNotes} notes au total · Dernière modif aujourd’hui`;
+      $('statFolders').textContent = `${folders.length} dossiers`;
+      $('statNotes').textContent = `${totalNotes} notes`;
+      $('folderResults').textContent = `${filtered.length} dossier${filtered.length > 1 ? 's' : ''} trouvé${filtered.length > 1 ? 's' : ''}`;
+      $('folderEmpty').classList.toggle('show', filtered.length === 0);
+    }
+
+    function filterFolders(q) { renderFolders(q); }
+
+    function openFolderDetail(id) {
+      currentFolderId = id;
+      const folder = folders.find(f => f.id === id);
+      if (!folder) return;
+      const folderNotes = notes.filter(n => n.folderId === id && !n.archived);
+
+      $('folderDetailIcon').textContent = folder.icon;
+      $('folderDetailTitle').textContent = folder.name;
+      $('folderDetailMeta').textContent = `${folderNotes.length} note${folderNotes.length > 1 ? 's' : ''} dans ce dossier · ${folder.modified}`;
+      $('folderDetailStack').innerHTML = folderNotes.slice(0, 3).map(n => `<div class="stack-pill">${escapeHtml(n.title)}</div>`).join('') || '<div class="stack-pill">Aucune note</div>';
+      $('folderDetailNotes').innerHTML = folderNotes.map(n => renderNoteCard(n, true)).join('') || `
+        <section class="empty-state show">
+          <div class="empty-icon">📝</div>
+          <strong>Aucune note ici</strong>
+          <p>Ajoute une note dans ce dossier pour commencer à l’organiser.</p>
+          <button class="primary" onclick="createTypedNote('normal')">Créer une note</button>
+        </section>
+      `;
+      showPage('folderDetailPage');
+    }
+
+    function openNote(id) {
+      lastListPage = document.querySelector('.page.active')?.id || 'homePage';
+      currentNoteId = id;
+      const n = notes.find(note => note.id === id);
+      if (!n) return;
+
+      $('detailIcon').className = `detail-icon ${n.color}`;
+      $('detailIcon').textContent = n.icon;
+      $('detailTitle').textContent = n.title;
+      $('tagChip').textContent = n.tag;
+      $('dateChip').textContent = n.dateChip;
+      $('dayTitle').textContent = n.dayTitle;
+      $('dayEditor').textContent = n.type === 'checklist' ? '' : n.content;
+      $('favBtn').textContent = n.favorite ? '★' : '☆';
+      $('pinBtn').textContent = n.pinned ? '⌖' : '⌑';
+
+      renderAllMode(n);
+      setNoteMode(n.type === 'dated' ? 'day' : 'all', false);
+      showPage('detailPage');
+    }
+
+    function renderAllMode(note) {
+      if (note.type === 'checklist') {
+        $('allMode').innerHTML = `
+          <div class="entry">
+            <div class="entry-date">${escapeHtml(note.dayTitle)}</div>
+            ${(note.checklist || []).map(item => `<div class="todo-item" onclick="this.classList.toggle('done')"><span class="circle-check"></span><span>${escapeHtml(item)}</span></div>`).join('')}
+          </div>
+        `;
+        return;
+      }
+
+      $('allMode').innerHTML = (note.entries || []).map(entry => `
+        <div class="entry">
+          <div class="entry-date">${escapeHtml(entry.date)}</div>
+          <div class="note-text" contenteditable="true">${escapeHtml(entry.text)}</div>
+        </div>
+      `).join('');
+    }
+
+    function setNoteMode(mode, toast = true) {
+      $('dayMode').style.display = mode === 'day' ? 'block' : 'none';
+      $('allMode').style.display = mode === 'all' ? 'block' : 'none';
+      $('dayToggle').classList.toggle('active', mode === 'day');
+      $('allToggle').classList.toggle('active', mode === 'all');
+      if (toast) showToast(mode === 'day' ? 'Mode jour par jour' : 'Mode toutes les dates');
+    }
+
+    function openCreateSheet() {
+      closeSheets();
+      $('overlay').classList.add('active');
+      $('createSheet').classList.add('active');
+    }
+
+    function createTypedNote(type) {
+      const id = 'note_' + Date.now();
+      const label = type === 'checklist' ? 'Nouvelle checklist' : type === 'dated' ? 'Nouvelle note datée' : 'Nouvelle note';
+      const folderId = $('folderDetailPage').classList.contains('active') ? currentFolderId : 'personal';
+
+      const note = {
+        id,
+        title: label,
+        icon: type === 'checklist' ? '✓' : type === 'dated' ? '▦' : '📝',
+        color: type === 'checklist' ? 'i-green' : type === 'dated' ? 'i-purple' : 'i-blue',
+        tag: type === 'checklist' ? 'Checklist' : type === 'dated' ? 'Journal' : 'Perso',
+        folderId,
+        type,
+        dateChip: 'Auj.',
+        dayTitle: 'Aujourd’hui',
+        favorite: false,
+        pinned: false,
+        archived: false,
+        content: '',
+        checklist: type === 'checklist' ? ['Premier élément'] : [],
+        entries: [{ date: 'Aujourd’hui', text: '' }]
+      };
+      notes.unshift(note);
+      closeSheets();
+      renderHome();
+      renderNotes();
+      renderFolders();
+      openNote(id);
+      showToast('Note créée');
+    }
+
+    function openFolderSheet() {
+      closeSheets();
+      $('folderName').value = '';
+      $('overlay').classList.add('active');
+      $('folderSheet').classList.add('active');
+      setTimeout(() => $('folderName').focus(), 200);
+    }
+
+    function selectFolderIcon(btn) {
+      selectedFolderIcon = btn.dataset.icon;
+      document.querySelectorAll('#iconPicker .pick').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function selectFolderColor(btn) {
+      selectedFolderColor = btn.dataset.color;
+      document.querySelectorAll('#colorPicker .pick').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function createFolder() {
+      const name = $('folderName').value.trim();
+      if (!name) {
+        showToast('Ajoute un nom au dossier');
+        $('folderName').focus();
+        return;
+      }
+      folders.unshift({
+        id: 'folder_' + Date.now(),
+        name,
+        icon: selectedFolderIcon,
+        color: selectedFolderColor,
+        modified: 'Nouveau dossier'
+      });
+      closeSheets();
+      renderFolders();
+      showPage('foldersPage');
+      showToast('Dossier créé');
+    }
+
+    function openFolderOptions(id) {
+      currentFolderId = id;
+      closeSheets();
+      $('overlay').classList.add('active');
+      $('folderOptionsSheet').classList.add('active');
+    }
+
+    function renameFolder() {
+      const folder = folders.find(f => f.id === currentFolderId);
+      if (!folder) return;
+      const next = prompt('Nouveau nom du dossier', folder.name);
+      if (!next || !next.trim()) return;
+      folder.name = next.trim();
+      closeSheets();
+      renderFolders();
+      if ($('folderDetailPage').classList.contains('active')) openFolderDetail(folder.id);
+      showToast('Dossier renommé');
+    }
+
+    function deleteFolder() {
+      const idx = folders.findIndex(f => f.id === currentFolderId);
+      if (idx < 0) return;
+      folders.splice(idx, 1);
+      notes.forEach(n => { if (n.folderId === currentFolderId) n.folderId = 'personal'; });
+      closeSheets();
+      renderFolders();
+      showPage('foldersPage');
+      showToast('Dossier supprimé');
+    }
+
+    function openNoteOptions() {
+      closeSheets();
+      $('overlay').classList.add('active');
+      $('noteOptionsSheet').classList.add('active');
+    }
+
+    function toggleFavorite() {
+      const n = notes.find(note => note.id === currentNoteId);
+      if (!n) return;
+      n.favorite = !n.favorite;
+      $('favBtn').textContent = n.favorite ? '★' : '☆';
+      renderHome();
+      renderNotes();
+      showToast(n.favorite ? 'Ajoutée aux favoris' : 'Retirée des favoris');
+    }
+
+    function togglePin() {
+      const n = notes.find(note => note.id === currentNoteId);
+      if (!n) return;
+      n.pinned = !n.pinned;
+      $('pinBtn').textContent = n.pinned ? '⌖' : '⌑';
+      renderHome();
+      renderNotes();
+      showToast(n.pinned ? 'Note épinglée' : 'Note désépinglée');
+    }
+
+    function archiveCurrentNote() {
+      const n = notes.find(note => note.id === currentNoteId);
+      if (!n) return;
+      n.archived = true;
+      closeSheets();
+      renderHome();
+      renderNotes();
+      showPage('notesPage');
+      showToast('Note archivée');
+    }
+
+    function deleteCurrentNote() {
+      const idx = notes.findIndex(note => note.id === currentNoteId);
+      if (idx < 0) return;
+      notes.splice(idx, 1);
+      closeSheets();
+      renderHome();
+      renderNotes();
+      showPage('notesPage');
+      showToast('Note supprimée');
+    }
+
+    function openCalendarSheet() {
+      closeSheets();
+      buildCalendar();
+      $('overlay').classList.add('active');
+      $('calendarSheet').classList.add('active');
+    }
+
+    function buildCalendar() {
+      const grid = $('calendarGrid');
+      const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+      const nums = [31,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,1,2,3,4];
+      grid.innerHTML = days.map(d => `<div class="dow">${d}</div>`).join('');
+      nums.forEach((num, i) => {
+        const muted = i === 0 || i > 30;
+        const weekend = i % 7 === 5 || i % 7 === 6;
+        const selected = num === 29 && !muted;
+        const chip = num === 29 ? 'Mer 29' : num === 30 ? 'Jeu 30' : `${num}`;
+        const title = num === 29 ? 'Mercredi 29 avril' : num === 30 ? 'Jeudi 30 avril' : `${num} avril`;
+        const cls = ['day', muted ? 'muted' : '', weekend ? 'weekend' : '', selected ? 'selected' : ''].join(' ');
+        grid.innerHTML += `<button class="${cls}" onclick="selectCalendarDay(${num}, '${chip}', '${title}')">${num}</button>`;
+      });
+    }
+
+    function selectCalendarDay(num, chip, title) {
+      $('dateChip').textContent = chip;
+      $('dayTitle').textContent = title;
+      const n = notes.find(note => note.id === currentNoteId);
+      if (n) {
+        n.dateChip = chip;
+        n.dayTitle = title;
+      }
+      document.querySelectorAll('.day').forEach(d => d.classList.remove('selected'));
+      [...document.querySelectorAll('.day')].find(d => d.textContent == num && !d.classList.contains('muted'))?.classList.add('selected');
+      showToast('Date sélectionnée');
+    }
+
+    function closeSheets() {
+      $('overlay').classList.remove('active');
+      document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
+    }
+
+    function formatText(cmd) {
+      document.execCommand(cmd, false, null);
+      showToast(cmd === 'bold' ? 'Gras' : 'Italique');
+    }
+
+    function addChecklist() {
+      const editor = $('dayEditor');
+      editor.textContent += (editor.textContent ? '\n' : '') + '☐ ';
+      editor.focus();
+    }
+
+    function addBullet() {
+      const editor = $('dayEditor');
+      editor.textContent += (editor.textContent ? '\n' : '') + '• ';
+      editor.focus();
+    }
+
+    function addHeading() {
+      const editor = $('dayEditor');
+      editor.textContent += (editor.textContent ? '\n' : '') + '# ';
+      editor.focus();
+    }
+
+    function toggleSwitch(id) {
+      $(id).classList.toggle('on');
+      showToast('Réglage mis à jour');
+    }
+
+    function toggleDarkMode() {
+      $('phone').classList.toggle('dark');
+      const isDark = $('phone').classList.contains('dark');
+      $('themeText').textContent = isDark ? 'Dark premium' : 'Light premium';
+      showToast(isDark ? 'Mode sombre activé' : 'Mode clair activé');
+    }
+
+    function showToast(text) {
+      const toast = $('toast');
+      toast.textContent = text;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 1400);
+    }
+
+    renderHome();
+    renderNotes();
+    renderFolders();
+    buildCalendar();
+  </script>
+</body>
+</html>
