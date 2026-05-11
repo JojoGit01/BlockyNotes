@@ -42,6 +42,8 @@ export interface Note {
   tagIds: string[];
   isFavorite: boolean;
   isPinned?: boolean;
+  isLocked?: boolean;
+  lockCodeHash?: string | null;
   isArchived: boolean;
   isDeleted: boolean;
   createdAt: string;
@@ -54,6 +56,8 @@ export interface Folder {
   name: string;
   iconKey?: FolderIconKey | null;
   color: string;
+  isLocked?: boolean;
+  lockCodeHash?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,4 +77,8 @@ export interface AppSettings {
   theme: ThemeMode;
   sortOrder: SortOrder;
   showArchivedOnDashboard: boolean;
+  appLockEnabled?: boolean;
+  lockAllNotes?: boolean;
+  lockAllFolders?: boolean;
+  lockCodeHash?: string | null;
 }

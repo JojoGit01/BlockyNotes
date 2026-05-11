@@ -30,6 +30,8 @@ export const createNoteService = (
     tagIds: input.tagIds ?? [],
     isFavorite: input.isFavorite ?? false,
     isPinned: input.isPinned ?? false,
+    isLocked: input.isLocked ?? false,
+    lockCodeHash: input.lockCodeHash ?? null,
     isArchived: false,
     isDeleted: false,
     createdAt: timestamp,

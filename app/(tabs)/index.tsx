@@ -4,12 +4,14 @@ import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppBackground } from "@/components/ui/AppBackground";
+import { AppHeaderLogo } from "@/components/ui/AppHeaderLogo";
 import { useTheme } from "@/hooks/useTheme";
 import { getNoteIcon } from "@/services/notes/noteIcon";
 import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useUIStore } from "@/store/useUIStore";
+import { getAppPalette } from "@/theme/appPalette";
 import type { Note } from "@/types/models";
 
 const navy = "#0F1B3A";
@@ -44,6 +46,7 @@ function StatItem({
   value: number;
 }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
 
   return (
     <View style={{ flex: 1, alignItems: "center" }}>
@@ -59,14 +62,15 @@ function StatItem({
       >
         <Ionicons name={icon} size={16} color={color} />
       </View>
-      <Text style={[theme.typography.caption, { color: "#8D8F99", marginTop: 5, fontWeight: "800", fontSize: 11 }]}>{label}</Text>
-      <Text style={{ color: navy, fontSize: 18, lineHeight: 22, fontWeight: "900", marginTop: 1 }}>{value}</Text>
+      <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 5, fontWeight: "800", fontSize: 11 }]}>{label}</Text>
+      <Text style={{ color: palette.text, fontSize: 18, lineHeight: 22, fontWeight: "900", marginTop: 1 }}>{value}</Text>
     </View>
   );
 }
 
 function HomeNoteRow({ note }: { note: Note }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const noteIcon = getNoteIcon(note);
   const elementCount = noteElementCount(note);
   const meta =
@@ -80,14 +84,14 @@ function HomeNoteRow({ note }: { note: Note }) {
       style={({ pressed }) => ({
         minHeight: 68,
         borderRadius: 20,
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.surface,
         paddingHorizontal: 12,
         paddingVertical: 10,
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
         opacity: pressed ? 0.88 : 1,
-        shadowColor: "#0F172A",
+        shadowColor: palette.shadow,
         shadowOpacity: 0.06,
         shadowRadius: 18,
         shadowOffset: { width: 0, height: 10 },
@@ -107,20 +111,21 @@ function HomeNoteRow({ note }: { note: Note }) {
         <Ionicons name={noteIcon.icon} size={19} color={noteIcon.color} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={[theme.typography.h3, { color: navy, fontSize: 16, lineHeight: 21, fontWeight: "900" }]} numberOfLines={1}>
+        <Text style={[theme.typography.h3, { color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "900" }]} numberOfLines={1}>
           {note.title || "Sans titre"}
         </Text>
-        <Text style={[theme.typography.caption, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+        <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
           {meta}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={18} color="#A4A7B0" />
+      <Ionicons name="chevron-forward" size={18} color={palette.textMuted} />
     </Pressable>
   );
 }
 
 export default function DashboardScreen() {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const insets = useSafeAreaInsets();
   const notes = useNotesStore((state) => state.notes);
   const folders = useFoldersStore((state) => state.folders);
@@ -148,35 +153,17 @@ export default function DashboardScreen() {
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: navy, letterSpacing: 5, textTransform: "uppercase", fontWeight: "900" }
+                  { color: palette.text, letterSpacing: 5, textTransform: "uppercase", fontWeight: "900" }
                 ]}
               >
                 Bonjour
               </Text>
-              <Text style={{ color: navy, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }}>
+              <Text style={{ color: palette.text, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }}>
                 {visibleDisplayName || "Jo"}
               </Text>
             </View>
 
-            <Pressable
-              onPress={() => router.push("/settings")}
-              style={({ pressed }) => ({
-                width: 52,
-                height: 52,
-                borderRadius: 18,
-                backgroundColor: "#FFFFFF",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: pressed ? 0.82 : 1,
-                shadowColor: "#0F172A",
-                shadowOpacity: 0.08,
-                shadowRadius: 18,
-                shadowOffset: { width: 0, height: 10 },
-                elevation: 8
-              })}
-            >
-            <Ionicons name="radio-button-on" size={20} color={navy} />
-            </Pressable>
+            <AppHeaderLogo />
           </View>
 
           <View
@@ -241,11 +228,11 @@ export default function DashboardScreen() {
             style={{
               minHeight: 84,
               borderRadius: 22,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               paddingHorizontal: 10,
               paddingVertical: 10,
               flexDirection: "row",
-              shadowColor: "#0F172A",
+              shadowColor: palette.shadow,
               shadowOpacity: 0.06,
               shadowRadius: 18,
               shadowOffset: { width: 0, height: 10 },
@@ -253,11 +240,11 @@ export default function DashboardScreen() {
             }}
           >
             <StatItem icon="document-text" color="#6F4DFF" background="#EFE5FF" label="Notes" value={activeNotes.length} />
-            <View style={{ width: 1, backgroundColor: "#E8E9EE", marginVertical: 10 }} />
+            <View style={{ width: 1, backgroundColor: palette.divider, marginVertical: 10 }} />
             <StatItem icon="star" color="#F97316" background="#FFF1DC" label="Favoris" value={favoriteNotesCount} />
-            <View style={{ width: 1, backgroundColor: "#E8E9EE", marginVertical: 10 }} />
+            <View style={{ width: 1, backgroundColor: palette.divider, marginVertical: 10 }} />
             <StatItem icon="folder" color="#0F766E" background="#D8FAF1" label="Dossiers" value={folders.length + 1} />
-            <View style={{ width: 1, backgroundColor: "#E8E9EE", marginVertical: 10 }} />
+            <View style={{ width: 1, backgroundColor: palette.divider, marginVertical: 10 }} />
             <StatItem icon="time" color="#4F6EF7" background="#E4ECFF" label="Datees" value={datedNotesCount} />
           </View>
 
@@ -265,12 +252,12 @@ export default function DashboardScreen() {
             style={{
               minHeight: 54,
               borderRadius: 20,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               flexDirection: "row",
               alignItems: "center",
               paddingHorizontal: 16,
               gap: 12,
-              shadowColor: "#0F172A",
+              shadowColor: palette.shadow,
               shadowOpacity: 0.05,
               shadowRadius: 18,
               shadowOffset: { width: 0, height: 10 },
@@ -282,8 +269,8 @@ export default function DashboardScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Recherche globale..."
-              placeholderTextColor="#767A82"
-              style={[theme.typography.body, { flex: 1, color: navy, paddingVertical: 8 }]}
+              placeholderTextColor={palette.placeholder}
+              style={[theme.typography.body, { flex: 1, color: palette.text, paddingVertical: 8 }]}
             />
             <Pressable
               onPress={() => router.push("/notes")}
@@ -291,22 +278,22 @@ export default function DashboardScreen() {
                 width: 34,
                 height: 34,
                 borderRadius: 13,
-                backgroundColor: "#F2F4F8",
+                backgroundColor: palette.surfaceMuted,
                 alignItems: "center",
                 justifyContent: "center",
                 opacity: pressed ? 0.82 : 1
               })}
             >
-              <Ionicons name="list" size={18} color={navy} />
+              <Ionicons name="list" size={18} color={palette.text} />
             </Pressable>
           </View>
 
           {pinnedNotes.length > 0 ? (
             <View style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={{ color: navy, fontSize: 20, lineHeight: 25, fontWeight: "900" }}>Epinglees</Text>
+                <Text style={{ color: palette.text, fontSize: 20, lineHeight: 25, fontWeight: "900" }}>Epinglees</Text>
                 <Pressable onPress={() => router.push("/notes")}>
-                  <Text style={[theme.typography.label, { color: navy, fontWeight: "900" }]}>Voir tout</Text>
+                  <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Voir tout</Text>
                 </Pressable>
               </View>
               {pinnedNotes.map((note) => (
@@ -317,9 +304,9 @@ export default function DashboardScreen() {
 
           <View style={{ gap: 10 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ color: navy, fontSize: 20, lineHeight: 25, fontWeight: "900" }}>Recemment modifiees</Text>
+              <Text style={{ color: palette.text, fontSize: 20, lineHeight: 25, fontWeight: "900" }}>Recemment modifiees</Text>
               <Pressable onPress={() => router.push("/notes")}>
-                <Text style={[theme.typography.label, { color: navy, fontWeight: "900" }]}>Voir tout</Text>
+                <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Voir tout</Text>
               </Pressable>
             </View>
             {recentNotes.length > 0 ? (
@@ -328,16 +315,16 @@ export default function DashboardScreen() {
               <View
                 style={{
                   borderRadius: 20,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   padding: 14,
-                  shadowColor: "#0F172A",
+                  shadowColor: palette.shadow,
                   shadowOpacity: 0.05,
                   shadowRadius: 18,
                   shadowOffset: { width: 0, height: 10 },
                   elevation: 5
                 }}
               >
-                <Text style={[theme.typography.body, { color: "#8D8F99" }]}>Aucune note recente pour le moment.</Text>
+                <Text style={[theme.typography.body, { color: palette.textMuted }]}>Aucune note recente pour le moment.</Text>
               </View>
             )}
           </View>

@@ -5,10 +5,16 @@ import { Alert, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } 
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppBackground } from "@/components/ui/AppBackground";
+import { LockCodeModal } from "@/components/security/LockCodeModal";
+import { AppHeaderLogo } from "@/components/ui/AppHeaderLogo";
 import { useTheme } from "@/hooks/useTheme";
+import { hashLockCode, verifyLockCode } from "@/lib/security";
 import { folderIconOptions, getFolderIcon } from "@/services/folders/folderIcon";
+import { isFolderLocked } from "@/services/security/locks";
 import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
+import { useSettingsStore } from "@/store/useSettingsStore";
+import { getAppPalette } from "@/theme/appPalette";
 import type { Folder, FolderIconKey } from "@/types/models";
 
 type FolderModalMode = "options" | "rename" | "icon" | "move" | "delete";
@@ -43,6 +49,7 @@ const dayLabel = (isoDate?: string) => {
 
 function CountBadge({ count }: { count: number }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
 
   return (
     <View
@@ -50,12 +57,12 @@ function CountBadge({ count }: { count: number }) {
         minHeight: 26,
         paddingHorizontal: 10,
         borderRadius: 11,
-        backgroundColor: "#F2F3F7",
+        backgroundColor: palette.surfaceMuted,
         alignItems: "center",
         justifyContent: "center"
       }}
     >
-      <Text style={[theme.typography.label, { color: "#0F1B3A", fontWeight: "800" }]}>
+      <Text style={[theme.typography.label, { color: palette.text, fontWeight: "800" }]}>
         {count} note{count > 1 ? "s" : ""}
       </Text>
     </View>
@@ -64,10 +71,13 @@ function CountBadge({ count }: { count: number }) {
 
 function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: (folder: Folder) => void }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
+  const settings = useSettingsStore((state) => state.settings);
   const notesCount = useNotesStore(
     (state) => state.notes.filter((note) => note.folderId === folder.id && !note.isDeleted).length
   );
   const folderIcon = getFolderIcon(folder);
+  const locked = isFolderLocked(folder, settings);
 
   return (
     <Pressable
@@ -76,10 +86,10 @@ function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: 
         width: "48%",
         minHeight: 158,
         borderRadius: 22,
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.surface,
         padding: 16,
         opacity: pressed ? 0.9 : 1,
-        shadowColor: "#0F172A",
+        shadowColor: palette.shadow,
         shadowOpacity: 0.08,
         shadowRadius: 22,
         shadowOffset: { width: 0, height: 12 },
@@ -99,7 +109,7 @@ function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: 
                 justifyContent: "center"
               }}
             >
-              <Ionicons name={folderIcon.icon} size={19} color={folderIcon.color} />
+              <Ionicons name={locked ? "lock-closed" : folderIcon.icon} size={19} color={locked ? "#0F1B3A" : folderIcon.color} />
             </View>
 
             <View style={{ alignItems: "flex-end", gap: 8, marginRight: -4, marginTop: -4 }}>
@@ -112,12 +122,12 @@ function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: 
                   width: 34,
                   height: 28,
                   borderRadius: 12,
-                  backgroundColor: "#F4F5F9",
+                  backgroundColor: palette.subtle,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="ellipsis-horizontal" size={18} color="#0F1B3A" />
+                <Ionicons name="ellipsis-horizontal" size={18} color={palette.text} />
               </Pressable>
               <CountBadge count={notesCount} />
             </View>
@@ -127,12 +137,12 @@ function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: 
             numberOfLines={1}
             style={[
               theme.typography.h3,
-              { color: "#0F1B3A", marginTop: 14, fontSize: 16, lineHeight: 21, fontWeight: "800" }
+              { color: palette.text, marginTop: 14, fontSize: 16, lineHeight: 21, fontWeight: "800" }
             ]}
           >
             {folder.name}
           </Text>
-          <Text style={[theme.typography.body, { color: "#92949E", marginTop: 2 }]}>
+          <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 2 }]}>
             Modifie {dayLabel(folder.updatedAt)}
           </Text>
         </View>
@@ -141,12 +151,12 @@ function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: 
           style={{
             alignSelf: "flex-start",
             borderRadius: 12,
-            backgroundColor: "#EFF0F4",
+            backgroundColor: palette.surfaceMuted,
             paddingHorizontal: 10,
             paddingVertical: 6
           }}
         >
-          <Text style={[theme.typography.caption, { color: "#858892", fontWeight: "800" }]} numberOfLines={1}>
+          <Text style={[theme.typography.caption, { color: palette.textMuted, fontWeight: "800" }]} numberOfLines={1}>
             {folder.name}
           </Text>
         </View>
@@ -157,6 +167,7 @@ function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: 
 
 function PersonalFolderTile({ onOpenOptions }: { onOpenOptions: () => void }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const notesCount = useNotesStore(
     (state) => state.notes.filter((note) => note.folderId === null && !note.isDeleted).length
   );
@@ -168,10 +179,10 @@ function PersonalFolderTile({ onOpenOptions }: { onOpenOptions: () => void }) {
         width: "48%",
         minHeight: 158,
         borderRadius: 22,
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.surface,
         padding: 16,
         opacity: pressed ? 0.9 : 1,
-        shadowColor: "#0F172A",
+        shadowColor: palette.shadow,
         shadowOpacity: 0.08,
         shadowRadius: 22,
         shadowOffset: { width: 0, height: 12 },
@@ -204,12 +215,12 @@ function PersonalFolderTile({ onOpenOptions }: { onOpenOptions: () => void }) {
                   width: 34,
                   height: 28,
                   borderRadius: 12,
-                  backgroundColor: "#F4F5F9",
+                  backgroundColor: palette.subtle,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="ellipsis-horizontal" size={18} color="#0F1B3A" />
+                <Ionicons name="ellipsis-horizontal" size={18} color={palette.text} />
               </Pressable>
               <CountBadge count={notesCount} />
             </View>
@@ -218,24 +229,24 @@ function PersonalFolderTile({ onOpenOptions }: { onOpenOptions: () => void }) {
           <Text
             style={[
               theme.typography.h3,
-              { color: "#0F1B3A", marginTop: 14, fontSize: 16, lineHeight: 21, fontWeight: "800" }
+              { color: palette.text, marginTop: 14, fontSize: 16, lineHeight: 21, fontWeight: "800" }
             ]}
           >
             Personnel
           </Text>
-          <Text style={[theme.typography.body, { color: "#92949E", marginTop: 2 }]}>{"Modifie aujourd'hui"}</Text>
+          <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 2 }]}>{"Modifie aujourd'hui"}</Text>
         </View>
 
         <View
           style={{
             alignSelf: "flex-start",
             borderRadius: 12,
-            backgroundColor: "#EFF0F4",
+            backgroundColor: palette.surfaceMuted,
             paddingHorizontal: 10,
             paddingVertical: 6
           }}
         >
-          <Text style={[theme.typography.caption, { color: "#858892", fontWeight: "800" }]}>
+          <Text style={[theme.typography.caption, { color: palette.textMuted, fontWeight: "800" }]}>
             {notesCount === 0 ? "Aucune note" : "Personnel"}
           </Text>
         </View>
@@ -246,6 +257,7 @@ function PersonalFolderTile({ onOpenOptions }: { onOpenOptions: () => void }) {
 
 function NewFolderTile({ onPress }: { onPress: () => void }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
 
   return (
     <Pressable
@@ -255,9 +267,9 @@ function NewFolderTile({ onPress }: { onPress: () => void }) {
         minHeight: 146,
         borderRadius: 22,
         borderWidth: 2,
-        borderColor: "#C9D0DF",
+        borderColor: palette.border,
         borderStyle: "dashed",
-        backgroundColor: "#F4F6FA",
+        backgroundColor: palette.surfaceMuted,
         alignItems: "center",
         justifyContent: "center",
         padding: 18,
@@ -269,18 +281,18 @@ function NewFolderTile({ onPress }: { onPress: () => void }) {
           width: 44,
           height: 44,
           borderRadius: 18,
-          backgroundColor: "#E9ECF3",
+          backgroundColor: palette.subtle,
           alignItems: "center",
           justifyContent: "center",
           marginBottom: 12
         }}
       >
-        <Ionicons name="add" size={24} color="#0F1B3A" />
+        <Ionicons name="add" size={24} color={palette.text} />
       </View>
-      <Text style={[theme.typography.label, { color: "#0F1B3A", textAlign: "center", fontWeight: "900" }]}>
+      <Text style={[theme.typography.label, { color: palette.text, textAlign: "center", fontWeight: "900" }]}>
         Nouveau{"\n"}dossier
       </Text>
-      <Text style={[theme.typography.caption, { color: "#0F1B3A", marginTop: 3, textAlign: "center", fontSize: 11 }]}>
+      <Text style={[theme.typography.caption, { color: palette.text, marginTop: 3, textAlign: "center", fontSize: 11 }]}>
         Organiser mes notes
       </Text>
     </Pressable>
@@ -288,6 +300,9 @@ function NewFolderTile({ onPress }: { onPress: () => void }) {
 }
 
 function SheetHandle() {
+  const theme = useTheme();
+  const palette = getAppPalette(theme);
+
   return (
     <View
       style={{
@@ -295,7 +310,7 @@ function SheetHandle() {
         width: 48,
         height: 5,
         borderRadius: 4,
-        backgroundColor: "#C9CBD5",
+        backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5",
         marginBottom: 4
       }}
     />
@@ -320,6 +335,7 @@ function OptionRow({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
 
   return (
     <Pressable
@@ -344,16 +360,16 @@ function OptionRow({
         <Ionicons name={icon} size={21} color={iconColor} />
       </View>
 
-      <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: "#E6E7EC", paddingBottom: 16 }}>
+      <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: palette.divider, paddingBottom: 16 }}>
         <Text
           style={[
             theme.typography.h3,
-            { color: danger ? "#FF3434" : "#0F1B3A", fontSize: 18, fontWeight: "900" }
+            { color: danger ? "#FF3434" : palette.text, fontSize: 18, fontWeight: "900" }
           ]}
         >
           {title}
         </Text>
-        <Text style={[theme.typography.body, { color: "#8D8F99", marginTop: 2 }]}>{description}</Text>
+        <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 2 }]}>{description}</Text>
       </View>
     </Pressable>
   );
@@ -361,6 +377,7 @@ function OptionRow({
 
 export default function FoldersScreen() {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const insets = useSafeAreaInsets();
   const folders = useFoldersStore((state) => state.folders);
   const createFolder = useFoldersStore((state) => state.createFolder);
@@ -377,6 +394,8 @@ export default function FoldersScreen() {
   const [selectedIconKey, setSelectedIconKey] = useState<FolderIconKey>("briefcase");
   const [renameName, setRenameName] = useState("");
   const [editIconKey, setEditIconKey] = useState<FolderIconKey>("briefcase");
+  const [folderLockModalMode, setFolderLockModalMode] = useState<"create" | "unlock-remove" | null>(null);
+  const [folderLockError, setFolderLockError] = useState<string | null>(null);
   const visibleNotes = notes.filter((note) => !note.isDeleted);
   const totalFolderCount = folders.length + 1;
   const latestActivity = [...visibleNotes.map((note) => note.updatedAt), ...folders.map((folder) => folder.updatedAt)].sort().at(-1);
@@ -466,6 +485,21 @@ export default function FoldersScreen() {
     closeFolderModal();
   };
 
+  const handleToggleFolderLock = async () => {
+    if (!selectedFolder) {
+      return;
+    }
+
+    if (selectedFolder.isLocked) {
+      setFolderLockError(null);
+      setFolderLockModalMode("unlock-remove");
+      return;
+    }
+
+    setFolderLockError(null);
+    setFolderLockModalMode("create");
+  };
+
   const handleMoveFolderNotes = async (folderId: string | null) => {
     if (!selectedFolder && !isPersonalOptions) {
       return;
@@ -503,7 +537,7 @@ export default function FoldersScreen() {
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#0F1B3A", letterSpacing: 5, textTransform: "uppercase", fontWeight: "800" }
+                  { color: palette.text, letterSpacing: 5, textTransform: "uppercase", fontWeight: "800" }
                 ]}
               >
                 Organisation
@@ -511,32 +545,14 @@ export default function FoldersScreen() {
               <Text
                 style={[
                   theme.typography.h1,
-                  { color: "#0F1B3A", marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }
+                  { color: palette.text, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }
                 ]}
               >
                 Dossiers
               </Text>
             </View>
 
-            <Pressable
-              onPress={() => setShowCreateModal(true)}
-              style={({ pressed }) => ({
-                width: 52,
-                height: 52,
-                borderRadius: 18,
-                backgroundColor: "#FFFFFF",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: pressed ? 0.82 : 1,
-                shadowColor: "#0F172A",
-                shadowOpacity: 0.08,
-                shadowRadius: 18,
-                shadowOffset: { width: 0, height: 10 },
-                elevation: 8
-              })}
-            >
-              <Ionicons name="add" size={22} color="#0F1B3A" />
-            </Pressable>
+            <AppHeaderLogo />
           </View>
 
           <View
@@ -623,12 +639,12 @@ export default function FoldersScreen() {
             style={{
               minHeight: 56,
               borderRadius: 20,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               flexDirection: "row",
               alignItems: "center",
               paddingHorizontal: 16,
               gap: 12,
-              shadowColor: "#0F172A",
+              shadowColor: palette.shadow,
               shadowOpacity: 0.05,
               shadowRadius: 18,
               shadowOffset: { width: 0, height: 10 },
@@ -640,8 +656,8 @@ export default function FoldersScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Rechercher un dossier..."
-              placeholderTextColor="#767A82"
-              style={[theme.typography.body, { flex: 1, color: "#0F1B3A", paddingVertical: 8 }]}
+              placeholderTextColor={palette.placeholder}
+              style={[theme.typography.body, { flex: 1, color: palette.text, paddingVertical: 8 }]}
             />
             <Pressable
               onPress={() => undefined}
@@ -649,16 +665,16 @@ export default function FoldersScreen() {
                 width: 34,
                 height: 34,
                 borderRadius: 13,
-                backgroundColor: "#F2F4F8",
+                backgroundColor: palette.surfaceMuted,
                 alignItems: "center",
                 justifyContent: "center"
               }}
             >
-              <Ionicons name="list" size={18} color="#0F1B3A" />
+              <Ionicons name="list" size={18} color={palette.text} />
             </Pressable>
           </View>
 
-          <Text style={[theme.typography.label, { color: "#8A8F9A", fontWeight: "900" }]}>
+          <Text style={[theme.typography.label, { color: palette.textMuted, fontWeight: "900" }]}>
             {foundCount} dossier{foundCount > 1 ? "s" : ""} trouve{foundCount > 1 ? "s" : ""}
           </Text>
 
@@ -684,7 +700,7 @@ export default function FoldersScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 26,
@@ -699,18 +715,18 @@ export default function FoldersScreen() {
                 width: 48,
                 height: 5,
                 borderRadius: 4,
-                backgroundColor: "#C9CBD5",
+                backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5",
                 marginBottom: 4
               }}
             />
 
-            <Text style={{ color: "#0F1B3A", fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Creer un dossier</Text>
+            <Text style={{ color: palette.text, fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Creer un dossier</Text>
 
             <View style={{ gap: 10 }}>
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#8D8D96", letterSpacing: 1.4, textTransform: "uppercase", fontWeight: "900" }
+                  { color: palette.textMuted, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: "900" }
                 ]}
               >
                 Nom du dossier
@@ -720,16 +736,16 @@ export default function FoldersScreen() {
                 onChangeText={setName}
                 autoFocus
                 placeholder="Ex : Travail, Sport, Idees..."
-                placeholderTextColor="#777982"
+                placeholderTextColor={palette.placeholder}
                 style={[
                   theme.typography.label,
                   {
                     minHeight: 56,
                     borderRadius: 18,
                     borderWidth: 1,
-                    borderColor: "#E6E7EC",
+                    borderColor: palette.border,
                     paddingHorizontal: 16,
-                    color: "#0F1B3A",
+                    color: palette.text,
                     fontWeight: "800"
                   }
                 ]}
@@ -740,7 +756,7 @@ export default function FoldersScreen() {
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#8D8D96", letterSpacing: 1.4, textTransform: "uppercase", fontWeight: "900" }
+                  { color: palette.textMuted, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: "900" }
                 ]}
               >
                 Icone
@@ -760,7 +776,7 @@ export default function FoldersScreen() {
                           borderRadius: 18,
                           backgroundColor: option.backgroundColor,
                           borderWidth: isSelected ? 2 : 0,
-                          borderColor: "#0F1B3A",
+                          borderColor: palette.text,
                           alignItems: "center",
                           justifyContent: "center"
                         }}
@@ -780,15 +796,15 @@ export default function FoldersScreen() {
                   flex: 1,
                   minHeight: 56,
                   borderRadius: 18,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surfaceMuted,
                   borderWidth: 1,
-                  borderColor: "#EEF0F5",
+                  borderColor: palette.border,
                   alignItems: "center",
                   justifyContent: "center",
                   opacity: pressed ? 0.82 : 1
                 })}
               >
-                <Text style={[theme.typography.label, { color: "#0F1B3A", fontWeight: "900" }]}>Annuler</Text>
+                <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Annuler</Text>
               </Pressable>
 
               <Pressable
@@ -822,7 +838,7 @@ export default function FoldersScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 26,
@@ -835,7 +851,7 @@ export default function FoldersScreen() {
 
             {(selectedFolder || isPersonalOptions) && folderModalMode === "options" ? (
               <>
-                <Text style={{ color: "#0F1B3A", fontSize: 27, lineHeight: 34, fontWeight: "900" }}>
+                <Text style={{ color: palette.text, fontSize: 27, lineHeight: 34, fontWeight: "900" }}>
                   Options du dossier
                 </Text>
 
@@ -864,6 +880,14 @@ export default function FoldersScreen() {
                           setFolderModalMode("icon");
                         }}
                       />
+                      <OptionRow
+                        title={selectedFolder.isLocked ? "Retirer le verrou" : "Securiser"}
+                        description={selectedFolder.isLocked ? "Retirer le code du dossier" : "Demander un code pour ce dossier"}
+                        icon={selectedFolder.isLocked ? "lock-open-outline" : "lock-closed-outline"}
+                        iconColor="#F97316"
+                        iconBackground="#FFF1DC"
+                        onPress={() => void handleToggleFolderLock()}
+                      />
                     </>
                   ) : null}
                   <OptionRow
@@ -891,22 +915,22 @@ export default function FoldersScreen() {
 
             {selectedFolder && folderModalMode === "rename" ? (
               <>
-                <Text style={{ color: "#0F1B3A", fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Renommer</Text>
+                <Text style={{ color: palette.text, fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Renommer</Text>
                 <TextInput
                   value={renameName}
                   onChangeText={setRenameName}
                   autoFocus
                   placeholder="Nom du dossier"
-                  placeholderTextColor="#777982"
+                  placeholderTextColor={palette.placeholder}
                   style={[
                     theme.typography.label,
                     {
                       minHeight: 56,
                       borderRadius: 18,
                       borderWidth: 1,
-                      borderColor: "#E6E7EC",
+                      borderColor: palette.border,
                       paddingHorizontal: 16,
-                      color: "#0F1B3A",
+                      color: palette.text,
                       fontWeight: "800"
                     }
                   ]}
@@ -918,12 +942,12 @@ export default function FoldersScreen() {
                       flex: 1,
                       minHeight: 54,
                       borderRadius: 18,
-                      backgroundColor: "#F4F5F9",
+                      backgroundColor: palette.surfaceMuted,
                       alignItems: "center",
                       justifyContent: "center"
                     }}
                   >
-                    <Text style={[theme.typography.label, { color: "#0F1B3A", fontWeight: "900" }]}>Retour</Text>
+                    <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Retour</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => void handleRenameFolder()}
@@ -944,7 +968,7 @@ export default function FoldersScreen() {
 
             {selectedFolder && folderModalMode === "icon" ? (
               <>
-                <Text style={{ color: "#0F1B3A", fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Changer icone</Text>
+                <Text style={{ color: palette.text, fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Changer icone</Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                   {folderIconOptions.map((option) => {
                     const isSelected = option.key === editIconKey;
@@ -959,7 +983,7 @@ export default function FoldersScreen() {
                           borderRadius: 18,
                           backgroundColor: option.backgroundColor,
                           borderWidth: isSelected ? 2 : 0,
-                          borderColor: "#0F1B3A",
+                          borderColor: palette.text,
                           alignItems: "center",
                           justifyContent: "center"
                         }}
@@ -976,12 +1000,12 @@ export default function FoldersScreen() {
                       flex: 1,
                       minHeight: 54,
                       borderRadius: 18,
-                      backgroundColor: "#F4F5F9",
+                      backgroundColor: palette.surfaceMuted,
                       alignItems: "center",
                       justifyContent: "center"
                     }}
                   >
-                    <Text style={[theme.typography.label, { color: "#0F1B3A", fontWeight: "900" }]}>Retour</Text>
+                    <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Retour</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => void handleUpdateFolderIcon()}
@@ -1002,8 +1026,8 @@ export default function FoldersScreen() {
 
             {(selectedFolder || isPersonalOptions) && folderModalMode === "move" ? (
               <>
-                <Text style={{ color: "#0F1B3A", fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Deplacer les notes</Text>
-                <Text style={[theme.typography.body, { color: "#8D8F99" }]}>
+                <Text style={{ color: palette.text, fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Deplacer les notes</Text>
+                <Text style={[theme.typography.body, { color: palette.textMuted }]}>
                   {selectedFolderNotes.length} note{selectedFolderNotes.length > 1 ? "s" : ""} depuis {selectedFolderTitle}
                 </Text>
                 <View style={{ gap: 10 }}>
@@ -1013,7 +1037,7 @@ export default function FoldersScreen() {
                       style={{
                         minHeight: 52,
                         borderRadius: 18,
-                        backgroundColor: "#F4F5F9",
+                        backgroundColor: palette.surfaceMuted,
                         flexDirection: "row",
                         alignItems: "center",
                         gap: 12,
@@ -1021,7 +1045,7 @@ export default function FoldersScreen() {
                       }}
                     >
                       <Ionicons name="folder-open-outline" size={20} color="#4F6EF7" />
-                      <Text style={[theme.typography.label, { color: "#0F1B3A", fontWeight: "900" }]}>Personnel</Text>
+                      <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Personnel</Text>
                     </Pressable>
                   ) : null}
                   {destinationFolders.map((folder) => {
@@ -1034,7 +1058,7 @@ export default function FoldersScreen() {
                         style={{
                           minHeight: 52,
                           borderRadius: 18,
-                          backgroundColor: "#F4F5F9",
+                          backgroundColor: palette.surfaceMuted,
                           flexDirection: "row",
                           alignItems: "center",
                           gap: 12,
@@ -1053,7 +1077,7 @@ export default function FoldersScreen() {
                         >
                           <Ionicons name={folderIcon.icon} size={17} color={folderIcon.color} />
                         </View>
-                        <Text style={[theme.typography.label, { color: "#0F1B3A", fontWeight: "900" }]}>
+                        <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>
                           {folder.name}
                         </Text>
                       </Pressable>
@@ -1077,8 +1101,8 @@ export default function FoldersScreen() {
 
             {selectedFolder && folderModalMode === "delete" ? (
               <>
-                <Text style={{ color: "#0F1B3A", fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Supprimer</Text>
-                <Text style={[theme.typography.body, { color: "#8D8F99", lineHeight: 24 }]}>
+                <Text style={{ color: palette.text, fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Supprimer</Text>
+                <Text style={[theme.typography.body, { color: palette.textMuted, lineHeight: 24 }]}>
                   Le dossier {selectedFolder.name} sera supprime. Ses {selectedFolderNotes.length} note
                   {selectedFolderNotes.length > 1 ? "s" : ""} partiront dans la corbeille.
                 </Text>
@@ -1089,12 +1113,12 @@ export default function FoldersScreen() {
                       flex: 1,
                       minHeight: 54,
                       borderRadius: 18,
-                      backgroundColor: "#F4F5F9",
+                      backgroundColor: palette.surfaceMuted,
                       alignItems: "center",
                       justifyContent: "center"
                     }}
                   >
-                    <Text style={[theme.typography.label, { color: "#0F1B3A", fontWeight: "900" }]}>Annuler</Text>
+                    <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Annuler</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => void handleDeleteFolder()}
@@ -1115,6 +1139,43 @@ export default function FoldersScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      {selectedFolder ? (
+        <LockCodeModal
+          visible={folderLockModalMode !== null}
+          title={folderLockModalMode === "unlock-remove" ? "Confirmer le code" : "Securiser le dossier"}
+          description={
+            folderLockModalMode === "unlock-remove"
+              ? "Entre le code actuel pour retirer le verrou."
+              : "Cree un code pour ce dossier. Ses notes utiliseront le meme code."
+          }
+          mode={folderLockModalMode === "unlock-remove" ? "unlock" : "create"}
+          confirmLabel={folderLockModalMode === "unlock-remove" ? "Retirer" : "Securiser"}
+          error={folderLockError}
+          onCancel={() => {
+            setFolderLockModalMode(null);
+            setFolderLockError(null);
+          }}
+          onSubmit={(code) => {
+            if (folderLockModalMode === "unlock-remove") {
+              if (!verifyLockCode(code, selectedFolder.lockCodeHash ?? useSettingsStore.getState().settings.lockCodeHash)) {
+                setFolderLockError("Code incorrect.");
+                return;
+              }
+
+              void updateFolder(selectedFolder.id, { isLocked: false, lockCodeHash: null });
+              setFolderLockModalMode(null);
+              setFolderLockError(null);
+              closeFolderModal();
+              return;
+            }
+
+            void updateFolder(selectedFolder.id, { isLocked: true, lockCodeHash: hashLockCode(code) });
+            setFolderLockModalMode(null);
+            setFolderLockError(null);
+            closeFolderModal();
+          }}
+        />
+      ) : null}
 
       <Pressable
         onPress={() => setShowCreateModal(true)}

@@ -13,6 +13,8 @@ export const createFolderService = (
     name: input.name.trim(),
     iconKey: input.iconKey ?? "briefcase",
     color: input.color ?? DEFAULT_FOLDER_COLOR,
+    isLocked: input.isLocked ?? false,
+    lockCodeHash: input.lockCodeHash ?? null,
     createdAt: timestamp,
     updatedAt: timestamp
   };

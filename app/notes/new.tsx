@@ -11,6 +11,7 @@ import { getNoteIcon, noteIconOptions } from "@/services/notes/noteIcon";
 import { noteTemplates } from "@/services/notes/noteTemplates";
 import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
+import { getAppPalette } from "@/theme/appPalette";
 import type { Note, NoteDailyEntry, NoteIconKey } from "@/types/models";
 
 type ViewMode = "day" | "all";
@@ -29,9 +30,11 @@ const calendarMonthFormatter = new Intl.DateTimeFormat("fr-FR", {
 export default function NewNoteScreen() {
   const { folderId: folderIdParam } = useLocalSearchParams<{ folderId?: string }>();
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const folders = useFoldersStore((state) => state.folders);
   const createNote = useNotesStore((state) => state.createNote);
   const deleteNote = useNotesStore((state) => state.deleteNote);
+  const purgeNote = useNotesStore((state) => state.purgeNote);
   const updateNote = useNotesStore((state) => state.updateNote);
   const [noteId, setNoteId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -53,7 +56,10 @@ export default function NewNoteScreen() {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
-  const didCreateNote = useRef(false);
+  const createInFlightRef = useRef(false);
+  const screenScrollRef = useRef<ScrollView | null>(null);
+  const dayEditorYRef = useRef(0);
+  const globalEditorYRef = useRef(0);
   const latestEntriesRef = useRef<NoteDailyEntry[]>([]);
   const todayKey = toDateKey();
   const [folderId, setFolderId] = useState<string | null>(
@@ -99,25 +105,25 @@ export default function NewNoteScreen() {
   }, [folderId, folders]);
 
   useEffect(() => {
-    if (didCreateNote.current) {
-      return;
-    }
+    const hasDraftContent =
+      title.trim().length > 0 ||
+      content.trim().length > 0 ||
+      latestEntriesRef.current.some((entry) => entry.content.trim().length > 0);
 
-    didCreateNote.current = true;
-
-    void createNote({
-      title: "",
-      content: "",
-      iconKey: null,
-      folderId
-    }).then((note) => {
-      setNoteId(note.id);
+    if (!hasDraftContent) {
       setSaveState("saved");
-    });
-  }, [createNote, folderId]);
+      if (noteId) {
+        const timeout = setTimeout(async () => {
+          await purgeNote(noteId);
+          latestEntriesRef.current = [];
+          setEntries([]);
+          setNoteId(null);
+          setSaveState("saved");
+        }, 350);
 
-  useEffect(() => {
-    if (!noteId) {
+        return () => clearTimeout(timeout);
+      }
+
       return;
     }
 
@@ -128,10 +134,36 @@ export default function NewNoteScreen() {
       const dailyEntries = upsertDailyEntry(latestEntriesRef.current, selectedDateKey, content);
       latestEntriesRef.current = dailyEntries;
       setEntries(dailyEntries);
+      const nextContent = buildNoteContentFromEntries(dailyEntries);
+
+      if (!noteId) {
+        if (createInFlightRef.current) {
+          return;
+        }
+
+        createInFlightRef.current = true;
+        try {
+          const note = await createNote({
+            title: title.trim(),
+            content: nextContent,
+            dailyEntries,
+            iconKey: iconKey === "auto" ? null : iconKey,
+            isFavorite,
+            isPinned,
+            folderId
+          });
+
+          setNoteId(note.id);
+          setSaveState("saved");
+        } finally {
+          createInFlightRef.current = false;
+        }
+        return;
+      }
 
       await updateNote(noteId, {
         title: title.trim(),
-        content: buildNoteContentFromEntries(dailyEntries),
+        content: nextContent,
         dailyEntries,
         iconKey: iconKey === "auto" ? null : iconKey,
         isFavorite,
@@ -143,22 +175,24 @@ export default function NewNoteScreen() {
     }, 350);
 
     return () => clearTimeout(timeout);
-  }, [content, folderId, iconKey, isFavorite, isPinned, noteId, selectedDateKey, title, updateNote]);
+  }, [content, createNote, folderId, iconKey, isFavorite, isPinned, noteId, purgeNote, selectedDateKey, title, updateNote]);
 
   const persistDraftDate = useCallback(
     async (dateKey: string, text: string) => {
-      if (!noteId) {
-        return;
-      }
-
       setSaveState("saving");
       const dailyEntries = upsertDailyEntry(latestEntriesRef.current, dateKey, text);
       latestEntriesRef.current = dailyEntries;
       setEntries(dailyEntries);
+      const nextContent = buildNoteContentFromEntries(dailyEntries);
+
+      if (!noteId) {
+        setSaveState("saved");
+        return;
+      }
 
       await updateNote(noteId, {
         title: title.trim(),
-        content: buildNoteContentFromEntries(dailyEntries),
+        content: nextContent,
         dailyEntries,
         iconKey: iconKey === "auto" ? null : iconKey,
         isFavorite,
@@ -216,9 +250,9 @@ export default function NewNoteScreen() {
           width: 44,
           height: 44,
           borderRadius: 16,
-          backgroundColor: isActive ? "#0F1B3A" : "#FFFFFF",
+          backgroundColor: isActive ? "#0F1B3A" : palette.surface,
           borderWidth: 1,
-          borderColor: isActive ? "#0F1B3A" : "#ECE6E0",
+          borderColor: isActive ? "#0F1B3A" : palette.border,
           alignItems: "center",
           justifyContent: "center"
         }}
@@ -254,11 +288,17 @@ export default function NewNoteScreen() {
     router.back();
   };
 
+  const scrollToEditor = (targetY: number) => {
+    requestAnimationFrame(() => {
+      screenScrollRef.current?.scrollTo({ y: Math.max(targetY - 20, 0), animated: true });
+    });
+  };
+
   const calendarMonthLabel = calendarMonthFormatter.format(calendarMonth);
   const formattedCalendarMonth = `${calendarMonthLabel.charAt(0).toUpperCase()}${calendarMonthLabel.slice(1)}`;
 
   return (
-    <ScreenContainer scrollable scrollBottomPadding={12}>
+    <ScreenContainer scrollable scrollBottomPadding={12} scrollRef={screenScrollRef}>
       <View style={{ gap: theme.spacing.lg, paddingBottom: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Pressable
@@ -267,9 +307,9 @@ export default function NewNoteScreen() {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderWidth: 1,
-              borderColor: "#ECE6E0",
+              borderColor: palette.border,
               alignItems: "center",
               justifyContent: "center"
             }}
@@ -285,9 +325,9 @@ export default function NewNoteScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: isPinned ? "#0F1B3A" : "#FFFFFF",
+                backgroundColor: isPinned ? "#0F1B3A" : palette.surface,
                 borderWidth: 1,
-                borderColor: isPinned ? "#0F1B3A" : "#ECE6E0",
+                borderColor: isPinned ? "#0F1B3A" : palette.border,
                 alignItems: "center",
                 justifyContent: "center"
               }}
@@ -302,9 +342,9 @@ export default function NewNoteScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: "#FFFFFF",
+                backgroundColor: palette.surface,
                 borderWidth: 1,
-                borderColor: "#ECE6E0",
+                borderColor: palette.border,
                 alignItems: "center",
                 justifyContent: "center"
               }}
@@ -319,9 +359,9 @@ export default function NewNoteScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: "#FFFFFF",
+                backgroundColor: palette.surface,
                 borderWidth: 1,
-                borderColor: "#ECE6E0",
+                borderColor: palette.border,
                 alignItems: "center",
                 justifyContent: "center"
               }}
@@ -356,7 +396,7 @@ export default function NewNoteScreen() {
             value={title}
             onChangeText={setTitle}
             placeholder="Nouvelle note"
-            placeholderTextColor="#B8B0A8"
+            placeholderTextColor={palette.placeholder}
             multiline
             scrollEnabled={false}
             style={[
@@ -384,9 +424,9 @@ export default function NewNoteScreen() {
             minHeight: 42,
             paddingHorizontal: 14,
             borderRadius: 14,
-            backgroundColor: "#FFFFFF",
+            backgroundColor: palette.surface,
             borderWidth: 1,
-            borderColor: "#F0ECE7",
+            borderColor: palette.border,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
@@ -394,8 +434,8 @@ export default function NewNoteScreen() {
             opacity: pressed ? 0.82 : 1
           })}
         >
-          <Ionicons name="albums-outline" size={14} color="#0F1B3A" />
-          <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 14 }]} numberOfLines={1}>
+          <Ionicons name="albums-outline" size={14} color={palette.text} />
+          <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
             Template
           </Text>
         </Pressable>
@@ -425,9 +465,9 @@ export default function NewNoteScreen() {
               maxWidth: 120,
               paddingHorizontal: 14,
               borderRadius: 14,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderWidth: 1,
-              borderColor: "#F0ECE7",
+              borderColor: palette.border,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
@@ -435,28 +475,31 @@ export default function NewNoteScreen() {
               opacity: pressed ? 0.82 : 1
             })}
           >
-            <Ionicons name="folder-outline" size={13} color="#0F1B3A" />
-            <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 14 }]} numberOfLines={1}>
+            <Ionicons name="folder-outline" size={13} color={palette.text} />
+            <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
               {activeFolderLabel}
             </Text>
           </Pressable>
 
           <View
+            onLayout={(event) => {
+              dayEditorYRef.current = event.nativeEvent.layout.y;
+            }}
             style={{
               minHeight: 42,
               paddingHorizontal: 12,
               borderRadius: 14,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderWidth: 1,
-              borderColor: "#F0ECE7",
+              borderColor: palette.border,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
               gap: 6
             }}
           >
-            <Ionicons name="cloud" size={14} color="#0F1B3A" />
-            <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 14 }]} numberOfLines={1}>
+            <Ionicons name="cloud" size={14} color={palette.text} />
+            <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
               {saveState === "saving" ? "Sync..." : "Autosave"}
             </Text>
           </View>
@@ -467,12 +510,12 @@ export default function NewNoteScreen() {
             style={{
               minHeight: 420,
               borderRadius: 28,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               paddingHorizontal: 22,
               paddingTop: 28,
               paddingBottom: 20,
               borderWidth: 1,
-              borderColor: "#F2EFEA"
+              borderColor: palette.border
             }}
           >
             <Text
@@ -486,12 +529,13 @@ export default function NewNoteScreen() {
             <TextInput
               value={content}
               onChangeText={setContent}
+              onFocus={() => scrollToEditor(dayEditorYRef.current)}
               placeholder={
                 selectedDateKey === todayKey
                   ? "Ecris quelque chose pour aujourd'hui..."
                   : "Ecris quelque chose pour cette date..."
               }
-              placeholderTextColor="#B8B0A8"
+              placeholderTextColor={palette.placeholder}
               multiline
               scrollEnabled={false}
               textAlignVertical="top"
@@ -499,7 +543,7 @@ export default function NewNoteScreen() {
                 theme.typography.body,
                 {
                   minHeight: 330,
-                  color: "#203047",
+                  color: palette.text,
                   fontSize: 17,
                   lineHeight: 32,
                   paddingVertical: 0
@@ -509,15 +553,18 @@ export default function NewNoteScreen() {
           </View>
         ) : (
           <View
+            onLayout={(event) => {
+              globalEditorYRef.current = event.nativeEvent.layout.y;
+            }}
             style={{
               minHeight: otherEntries.length > 0 ? 420 : 260,
               borderRadius: 28,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               paddingHorizontal: 22,
               paddingTop: 28,
               paddingBottom: 20,
               borderWidth: 1,
-              borderColor: "#F2EFEA"
+              borderColor: palette.border
             }}
           >
             <View
@@ -525,13 +572,13 @@ export default function NewNoteScreen() {
                 gap: 14,
                 paddingBottom: otherEntries.length > 0 ? 26 : 0,
                 borderBottomWidth: otherEntries.length > 0 ? 1 : 0,
-                borderBottomColor: "#E8E3DF"
+                borderBottomColor: palette.divider
               }}
             >
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#A69F98", letterSpacing: 2, textTransform: "uppercase", fontWeight: "900" }
+                  { color: palette.textMuted, letterSpacing: 2, textTransform: "uppercase", fontWeight: "900" }
                 ]}
               >
                 {entryDateFormatter.format(fromDateKey(todayKey))}
@@ -542,8 +589,9 @@ export default function NewNoteScreen() {
                   setSelectedDateKey(todayKey);
                   setContent(nextContent);
                 }}
+                onFocus={() => scrollToEditor(globalEditorYRef.current)}
                 placeholder="Ecris quelque chose pour aujourd'hui..."
-                placeholderTextColor="#B8B0A8"
+                placeholderTextColor={palette.placeholder}
                 multiline
                 scrollEnabled={false}
                 textAlignVertical="top"
@@ -551,7 +599,7 @@ export default function NewNoteScreen() {
                   theme.typography.body,
                   {
                     minHeight: otherEntries.length > 0 ? 180 : 190,
-                    color: "#203047",
+                    color: palette.text,
                     fontSize: 17,
                     lineHeight: 32,
                     paddingVertical: 0
@@ -571,18 +619,18 @@ export default function NewNoteScreen() {
                     paddingTop: 18,
                     paddingBottom: isLastEntry ? 0 : 26,
                     borderBottomWidth: isLastEntry ? 0 : 1,
-                    borderBottomColor: "#E8E3DF"
+                    borderBottomColor: palette.divider
                   }}
                 >
                   <Text
                     style={[
                       theme.typography.caption,
-                      { color: "#A69F98", letterSpacing: 2, textTransform: "uppercase", fontWeight: "900" }
+                      { color: palette.textMuted, letterSpacing: 2, textTransform: "uppercase", fontWeight: "900" }
                     ]}
                   >
                     {entryDateFormatter.format(fromDateKey(entry.date))}
                   </Text>
-                  <Text style={[theme.typography.body, { color: "#203047", fontSize: 17, lineHeight: 30 }]}>
+                  <Text style={[theme.typography.body, { color: palette.text, fontSize: 17, lineHeight: 30 }]}>
                     {entry.content.trim()}
                   </Text>
                 </View>
@@ -604,7 +652,7 @@ export default function NewNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 24,
@@ -619,11 +667,11 @@ export default function NewNoteScreen() {
                 width: 48,
                 height: 5,
                 borderRadius: 4,
-                backgroundColor: "#C9CBD5"
+                backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5"
               }}
             />
 
-            <Text style={{ color: "#0F1B3A", fontSize: 27, lineHeight: 34, fontWeight: "900" }}>
+            <Text style={{ color: palette.text, fontSize: 27, lineHeight: 34, fontWeight: "900" }}>
               Changer la date
             </Text>
 
@@ -635,17 +683,17 @@ export default function NewNoteScreen() {
                   width: 44,
                   height: 44,
                   borderRadius: 16,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="chevron-back" size={17} color="#0F1B3A" />
+                <Ionicons name="chevron-back" size={17} color={palette.text} />
               </Pressable>
 
-              <Text style={[theme.typography.h3, { color: "#0F1B3A", fontWeight: "900" }]}>
+              <Text style={[theme.typography.h3, { color: palette.text, fontWeight: "900" }]}>
                 {formattedCalendarMonth}
               </Text>
 
@@ -656,14 +704,14 @@ export default function NewNoteScreen() {
                   width: 44,
                   height: 44,
                   borderRadius: 16,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="chevron-forward" size={17} color="#0F1B3A" />
+                <Ionicons name="chevron-forward" size={17} color={palette.text} />
               </Pressable>
             </View>
 
@@ -677,7 +725,7 @@ export default function NewNoteScreen() {
                       {
                         width: `${100 / 7}%`,
                         textAlign: "center",
-                        color: "#8D8F99",
+                        color: palette.textMuted,
                         fontWeight: "900"
                       }
                     ]}
@@ -712,7 +760,7 @@ export default function NewNoteScreen() {
                           width: 38,
                           height: 38,
                           borderRadius: 15,
-                          backgroundColor: isSelected ? "#0F1B3A" : isToday ? "#F2F4FA" : "transparent",
+                          backgroundColor: isSelected ? "#0F1B3A" : isToday ? palette.surfaceMuted : "transparent",
                           alignItems: "center",
                           justifyContent: "center"
                         }}
@@ -721,7 +769,7 @@ export default function NewNoteScreen() {
                           style={[
                             theme.typography.label,
                             {
-                              color: isSelected ? "#FFFFFF" : isOutside ? "#C6C8D0" : "#0F1B3A",
+                              color: isSelected ? "#FFFFFF" : isOutside ? palette.textMuted : palette.text,
                               fontWeight: isSelected || isToday ? "900" : "700"
                             }
                           ]}
@@ -754,14 +802,14 @@ export default function NewNoteScreen() {
                   flex: 1,
                   minHeight: 54,
                   borderRadius: 18,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 15 }]}>
+                <Text style={[theme.typography.label, { color: palette.text, fontSize: 15 }]}>
                   {"Aujourd'hui"}
                 </Text>
               </Pressable>
@@ -796,7 +844,7 @@ export default function NewNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 24,
@@ -810,12 +858,12 @@ export default function NewNoteScreen() {
                 width: 48,
                 height: 5,
                 borderRadius: 4,
-                backgroundColor: "#C9CBD5",
+                backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5",
                 marginBottom: 20
               }}
             />
 
-            <Text style={{ color: "#0F1B3A", fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 22 }}>
+            <Text style={{ color: palette.text, fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 22 }}>
               Options de note
             </Text>
 
@@ -838,13 +886,13 @@ export default function NewNoteScreen() {
                       justifyContent: "center"
                     }}
                   >
-                    <Ionicons name="albums-outline" size={21} color="#0F1B3A" />
+                    <Ionicons name="albums-outline" size={21} color={palette.navy} />
                   </View>
-                  <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: "#E6E7EC", paddingBottom: 14 }}>
-                    <Text style={[theme.typography.h3, { color: "#0F1B3A", fontSize: 18, lineHeight: 23, fontWeight: "900" }]}>
+                  <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: palette.divider, paddingBottom: 14 }}>
+                    <Text style={[theme.typography.h3, { color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "900" }]}>
                       Templates
                     </Text>
-                    <Text style={[theme.typography.body, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+                    <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
                       Commencer avec une structure
                     </Text>
                   </View>
@@ -869,13 +917,13 @@ export default function NewNoteScreen() {
                       justifyContent: "center"
                     }}
                   >
-                    <Ionicons name="hand-left-outline" size={21} color="#0F1B3A" />
+                    <Ionicons name="hand-left-outline" size={21} color={palette.navy} />
                   </View>
-                  <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: "#E6E7EC", paddingBottom: 14 }}>
-                    <Text style={[theme.typography.h3, { color: "#0F1B3A", fontSize: 18, lineHeight: 23, fontWeight: "900" }]}>
+                  <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: palette.divider, paddingBottom: 14 }}>
+                    <Text style={[theme.typography.h3, { color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "900" }]}>
                       {"Changer l'icone"}
                     </Text>
-                    <Text style={[theme.typography.body, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+                    <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
                       Modifier le style de la note
                     </Text>
                   </View>
@@ -902,11 +950,11 @@ export default function NewNoteScreen() {
                   >
                     <Ionicons name="folder-open-outline" size={21} color="#4F6EF7" />
                   </View>
-                  <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: "#E6E7EC", paddingBottom: 14 }}>
-                    <Text style={[theme.typography.h3, { color: "#0F1B3A", fontSize: 18, lineHeight: 23, fontWeight: "900" }]}>
+                  <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: palette.divider, paddingBottom: 14 }}>
+                    <Text style={[theme.typography.h3, { color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "900" }]}>
                       Mettre dans un dossier
                     </Text>
-                    <Text style={[theme.typography.body, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+                    <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
                       {activeFolderLabel}
                     </Text>
                   </View>
@@ -931,7 +979,7 @@ export default function NewNoteScreen() {
                     <Text style={[theme.typography.h3, { color: "#FF3434", fontSize: 18, lineHeight: 23, fontWeight: "900" }]}>
                       Supprimer
                     </Text>
-                    <Text style={[theme.typography.body, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+                    <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
                       Envoyer dans la corbeille
                     </Text>
                   </View>
@@ -954,7 +1002,7 @@ export default function NewNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 24,
@@ -969,12 +1017,12 @@ export default function NewNoteScreen() {
                 width: 48,
                 height: 5,
                 borderRadius: 4,
-                backgroundColor: "#C9CBD5",
+                backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5",
                 marginBottom: 20
               }}
             />
 
-            <Text style={{ color: "#0F1B3A", fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 18 }}>
+            <Text style={{ color: palette.text, fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 18 }}>
               Changer de dossier
             </Text>
 
@@ -989,7 +1037,7 @@ export default function NewNoteScreen() {
                     minHeight: 58,
                     borderRadius: 19,
                     paddingHorizontal: 16,
-                    backgroundColor: folderId === null ? "#0F1B3A" : "#F7F5F2",
+                    backgroundColor: folderId === null ? "#0F1B3A" : palette.surfaceMuted,
                     flexDirection: "row",
                     alignItems: "center",
                     gap: 12,
@@ -1001,14 +1049,14 @@ export default function NewNoteScreen() {
                       width: 34,
                       height: 34,
                       borderRadius: 13,
-                      backgroundColor: folderId === null ? "rgba(255,255,255,0.14)" : "#FFFFFF",
+                      backgroundColor: folderId === null ? "rgba(255,255,255,0.14)" : palette.surface,
                       alignItems: "center",
                       justifyContent: "center"
                     }}
                   >
-                    <Ionicons name="folder-open-outline" size={16} color={folderId === null ? "#FFFFFF" : "#0F1B3A"} />
+                    <Ionicons name="folder-open-outline" size={16} color={folderId === null ? "#FFFFFF" : palette.text} />
                   </View>
-                  <Text style={[theme.typography.label, { color: folderId === null ? "#FFFFFF" : "#0F1B3A" }]}>
+                  <Text style={[theme.typography.label, { color: folderId === null ? "#FFFFFF" : palette.text }]}>
                     Perso
                   </Text>
                 </Pressable>
@@ -1027,7 +1075,7 @@ export default function NewNoteScreen() {
                         minHeight: 58,
                         borderRadius: 19,
                         paddingHorizontal: 16,
-                        backgroundColor: isActive ? "#0F1B3A" : "#F7F5F2",
+                        backgroundColor: isActive ? "#0F1B3A" : palette.surfaceMuted,
                         flexDirection: "row",
                         alignItems: "center",
                         gap: 12,
@@ -1039,14 +1087,14 @@ export default function NewNoteScreen() {
                           width: 34,
                           height: 34,
                           borderRadius: 13,
-                          backgroundColor: isActive ? "rgba(255,255,255,0.14)" : "#FFFFFF",
+                          backgroundColor: isActive ? "rgba(255,255,255,0.14)" : palette.surface,
                           alignItems: "center",
                           justifyContent: "center"
                         }}
                       >
-                        <Ionicons name="folder-outline" size={16} color={isActive ? "#FFFFFF" : "#0F1B3A"} />
+                        <Ionicons name="folder-outline" size={16} color={isActive ? "#FFFFFF" : palette.text} />
                       </View>
-                      <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : "#0F1B3A" }]}>
+                      <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : palette.text }]}>
                         {folder.name}
                       </Text>
                     </Pressable>
@@ -1070,7 +1118,7 @@ export default function NewNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 24,
@@ -1085,12 +1133,12 @@ export default function NewNoteScreen() {
                 width: 48,
                 height: 5,
                 borderRadius: 4,
-                backgroundColor: "#C9CBD5",
+                backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5",
                 marginBottom: 20
               }}
             />
 
-            <Text style={{ color: "#0F1B3A", fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 18 }}>
+            <Text style={{ color: palette.text, fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 18 }}>
               Templates
             </Text>
 
@@ -1111,7 +1159,7 @@ export default function NewNoteScreen() {
                         minHeight: 62,
                         borderRadius: 19,
                         paddingHorizontal: 16,
-                        backgroundColor: isActive ? "#0F1B3A" : "#F7F5F2",
+                        backgroundColor: isActive ? "#0F1B3A" : palette.surfaceMuted,
                         flexDirection: "row",
                         alignItems: "center",
                         gap: 12,
@@ -1123,19 +1171,19 @@ export default function NewNoteScreen() {
                           width: 38,
                           height: 38,
                           borderRadius: 14,
-                          backgroundColor: isActive ? "rgba(255,255,255,0.14)" : "#FFFFFF",
+                          backgroundColor: isActive ? "rgba(255,255,255,0.14)" : palette.surface,
                           alignItems: "center",
                           justifyContent: "center"
                         }}
                       >
-                        <Ionicons name={templateIcon} size={17} color={isActive ? "#FFFFFF" : "#0F1B3A"} />
+                        <Ionicons name={templateIcon} size={17} color={isActive ? "#FFFFFF" : palette.text} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : "#0F1B3A" }]}>
+                        <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : palette.text }]}>
                           {template.label}
                         </Text>
                         <Text
-                          style={[theme.typography.caption, { color: isActive ? "rgba(255,255,255,0.74)" : "#8D8F99", marginTop: 2 }]}
+                          style={[theme.typography.caption, { color: isActive ? "rgba(255,255,255,0.74)" : palette.textMuted, marginTop: 2 }]}
                           numberOfLines={1}
                         >
                           {template.title || "Note vide"}
@@ -1163,21 +1211,21 @@ export default function NewNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderRadius: 28,
               paddingHorizontal: 20,
               paddingTop: 20,
               paddingBottom: 20,
               gap: theme.spacing.md,
               borderWidth: 1,
-              borderColor: "#F1E8E2"
+              borderColor: palette.border
             }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#B8AA9A", letterSpacing: 2, textTransform: "uppercase" }
+                  { color: palette.textMuted, letterSpacing: 2, textTransform: "uppercase" }
                 ]}
               >
                 Icone de la note
@@ -1188,7 +1236,7 @@ export default function NewNoteScreen() {
                   width: 36,
                   height: 36,
                   borderRadius: 14,
-                  backgroundColor: "#F7F4F1",
+                  backgroundColor: palette.surfaceMuted,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
@@ -1212,7 +1260,7 @@ export default function NewNoteScreen() {
                       width: 72,
                       minHeight: 72,
                       borderRadius: 18,
-                      backgroundColor: isActive ? "#0F1B3A" : "#F3F0EC",
+                      backgroundColor: isActive ? "#0F1B3A" : palette.chip,
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 7

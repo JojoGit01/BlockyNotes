@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
 import { useNotesStore } from "@/store/useNotesStore";
+import { getAppPalette } from "@/theme/appPalette";
 
 const dayLabel = (isoDate: string) => {
   const noteDate = new Date(isoDate);
@@ -29,6 +30,7 @@ const dayLabel = (isoDate: string) => {
 
 export default function FolderTrashScreen() {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const notes = useNotesStore((state) => state.notes);
   const deletedNotes = useMemo(
     () =>
@@ -52,19 +54,19 @@ export default function FolderTrashScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: "#F4F1EE",
+                backgroundColor: palette.surface,
                 alignItems: "center",
                 justifyContent: "center"
               }}
             >
-              <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
+              <Ionicons name="arrow-back" size={18} color={palette.text} />
             </Pressable>
 
             <View style={{ flex: 1 }}>
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#B8AA9A", letterSpacing: 3, textTransform: "uppercase" }
+                  { color: palette.textMuted, letterSpacing: 3, textTransform: "uppercase" }
                 ]}
               >
                 Systeme
@@ -72,7 +74,7 @@ export default function FolderTrashScreen() {
               <Text
                 style={[
                   theme.typography.h1,
-                  { color: theme.colors.text, marginTop: theme.spacing.sm, fontSize: 38, lineHeight: 44 }
+                  { color: palette.text, marginTop: theme.spacing.sm, fontSize: 38, lineHeight: 44 }
                 ]}
               >
                 Corbeille

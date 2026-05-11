@@ -9,10 +9,12 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
 import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
+import { getAppPalette } from "@/theme/appPalette";
 
 export default function DeleteFolderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const folder = useFoldersStore((state) => state.folders.find((entry) => entry.id === id));
   const allNotes = useNotesStore((state) => state.notes);
   const notesInFolder = useMemo(
@@ -46,15 +48,15 @@ export default function DeleteFolderScreen() {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "#F4F1EE",
+              backgroundColor: palette.surface,
               alignItems: "center",
               justifyContent: "center"
             }}
           >
-            <Ionicons name="close" size={20} color={theme.colors.text} />
+            <Ionicons name="close" size={20} color={palette.text} />
           </Pressable>
 
-          <Text style={[theme.typography.h3, { color: theme.colors.text }]}>Supprimer le dossier</Text>
+          <Text style={[theme.typography.h3, { color: palette.text }]}>Supprimer le dossier</Text>
         </View>
 
         <AppCard
@@ -62,7 +64,7 @@ export default function DeleteFolderScreen() {
             borderRadius: 28,
             paddingHorizontal: 22,
             paddingVertical: 24,
-            backgroundColor: "#FBFAF8"
+            backgroundColor: palette.surface
           }}
         >
           <View style={{ alignItems: "center" }}>
@@ -80,13 +82,13 @@ export default function DeleteFolderScreen() {
             </View>
           </View>
 
-          <Text style={[theme.typography.h2, { color: theme.colors.text, textAlign: "center", marginTop: 18 }]}>
+          <Text style={[theme.typography.h2, { color: palette.text, textAlign: "center", marginTop: 18 }]}>
             Supprimer &quot;{folder.name}&quot; ?
           </Text>
           <Text
             style={[
               theme.typography.body,
-              { color: "#6C7385", textAlign: "center", marginTop: theme.spacing.md, lineHeight: 30 }
+              { color: palette.textMuted, textAlign: "center", marginTop: theme.spacing.md, lineHeight: 30 }
             ]}
           >
             Le dossier sera supprime. Les {notesInFolder.length} note(s) associee(s) seront envoyees dans la corbeille.
@@ -99,12 +101,12 @@ export default function DeleteFolderScreen() {
                 flex: 1,
                 minHeight: 42,
                 borderRadius: 18,
-                backgroundColor: "#F1EEEB",
+                backgroundColor: palette.surfaceMuted,
                 alignItems: "center",
                 justifyContent: "center"
               }}
             >
-              <Text style={[theme.typography.label, { color: theme.colors.text }]}>Annuler</Text>
+              <Text style={[theme.typography.label, { color: palette.text }]}>Annuler</Text>
             </Pressable>
             <Pressable
               onPress={() => void handleConfirm()}

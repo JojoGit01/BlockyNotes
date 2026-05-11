@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   BackHandler,
-  GestureResponderEvent,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -25,9 +24,14 @@ import {
 } from "@/services/notes/dailyEntries";
 import { getNoteIcon, noteIconOptions } from "@/services/notes/noteIcon";
 import { useTheme } from "@/hooks/useTheme";
+import { LockCodeModal } from "@/components/security/LockCodeModal";
 import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
+import { useSettingsStore } from "@/store/useSettingsStore";
+import { hashLockCode, verifyLockCode } from "@/lib/security";
+import { getAppPalette } from "@/theme/appPalette";
 import type { NoteIconKey } from "@/types/models";
+import { getNoteLockHash, isNoteLocked } from "@/services/security/locks";
 
 type ViewMode = "day" | "all";
 
@@ -41,8 +45,6 @@ const calendarMonthFormatter = new Intl.DateTimeFormat("fr-FR", {
   month: "long",
   year: "numeric"
 });
-
-const compactDisplayContent = (content: string) => content.replace(/\n{3,}/g, "\n\n").trim();
 
 function NoteOptionRow({
   icon,
@@ -64,6 +66,7 @@ function NoteOptionRow({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.78 : 1 })}>
@@ -80,19 +83,19 @@ function NoteOptionRow({
         >
           <Ionicons name={icon} size={21} color={iconColor} />
         </View>
-        <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: "#E6E7EC", paddingBottom: 14 }}>
+        <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: palette.divider, paddingBottom: 14 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Text
                 style={[
                   theme.typography.h3,
-                  { color: danger ? "#FF3434" : "#0F1B3A", fontSize: 18, lineHeight: 23, fontWeight: "900" }
+                  { color: danger ? "#FF3434" : palette.text, fontSize: 18, lineHeight: 23, fontWeight: "900" }
                 ]}
                 numberOfLines={1}
               >
                 {title}
               </Text>
-              <Text style={[theme.typography.body, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+              <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
                 {subtitle}
               </Text>
             </View>
@@ -107,7 +110,9 @@ function NoteOptionRow({
 export default function EditNoteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const folders = useFoldersStore((state) => state.folders);
+  const settings = useSettingsStore((state) => state.settings);
   const note = useNotesStore((state) => state.notes.find((entry) => entry.id === id));
   const updateNote = useNotesStore((state) => state.updateNote);
   const archiveNote = useNotesStore((state) => state.archiveNote);
@@ -125,6 +130,10 @@ export default function EditNoteScreen() {
   const [showIconModal, setShowIconModal] = useState(false);
   const [showDateModal, setShowDateModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
+  const [noteUnlocked, setNoteUnlocked] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [noteLockModalMode, setNoteLockModalMode] = useState<"create" | "unlock-remove" | null>(null);
+  const [noteLockError, setNoteLockError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey());
   const [allJumpDateKey, setAllJumpDateKey] = useState(toDateKey());
@@ -134,9 +143,11 @@ export default function EditNoteScreen() {
   });
   const isFirstSync = useRef(true);
   const screenScrollRef = useRef<ScrollView | null>(null);
-  const swipeStartX = useRef<number | null>(null);
+  const dayEditorYRef = useRef(0);
   const allCardYRef = useRef(0);
   const allEntryYRef = useRef<Record<string, number>>({});
+  const allEntryDraftsRef = useRef<Record<string, string>>({});
+  const allEntrySaveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const latestDraftRef = useRef({
     dateKey: selectedDateKey,
     content: dayContent,
@@ -145,6 +156,9 @@ export default function EditNoteScreen() {
   });
   const noteId = note?.id;
   const todayKey = toDateKey();
+  const containingFolder = folders.find((folder) => folder.id === note?.folderId);
+  const noteLockHash = note ? getNoteLockHash(note, containingFolder, settings) : null;
+  const requiresNoteUnlock = Boolean(note && isNoteLocked(note, containingFolder, settings) && noteLockHash && !noteUnlocked);
 
   const entries = useMemo(() => (note ? normalizeDailyEntries(note) : []), [note]);
   const entryDates = useMemo(() => new Set(entries.map((entry) => entry.date)), [entries]);
@@ -214,6 +228,11 @@ export default function EditNoteScreen() {
   }, [dayContent, folderId, selectedDateKey, title]);
 
   useEffect(() => {
+    setNoteUnlocked(false);
+    setUnlockError(null);
+  }, [noteId]);
+
+  useEffect(() => {
     if (!noteId) {
       return;
     }
@@ -259,21 +278,59 @@ export default function EditNoteScreen() {
     [noteId, updateNote]
   );
 
+  const persistEntryChanges = useCallback(
+    async (entryUpdates: Record<string, string>, nextTitle: string, nextFolderId: string | null) => {
+      if (!noteId) {
+        return;
+      }
+
+      const latestNote = useNotesStore.getState().notes.find((entry) => entry.id === noteId);
+
+      if (!latestNote) {
+        return;
+      }
+
+      let dailyEntries = normalizeDailyEntries(latestNote);
+
+      for (const [dateKey, content] of Object.entries(entryUpdates)) {
+        dailyEntries = upsertDailyEntry(dailyEntries, dateKey, content);
+      }
+
+      await updateNote(noteId, {
+        title: nextTitle.trim(),
+        folderId: nextFolderId,
+        dailyEntries,
+        content: buildNoteContentFromEntries(dailyEntries)
+      });
+    },
+    [noteId, updateNote]
+  );
+
   const flushPendingSave = useCallback(async () => {
     if (!noteId) {
       return;
     }
 
     const latestDraft = latestDraftRef.current;
+    const allEntryDrafts = allEntryDraftsRef.current;
+
+    for (const timeout of Object.values(allEntrySaveTimeoutsRef.current)) {
+      clearTimeout(timeout);
+    }
+
+    allEntrySaveTimeoutsRef.current = {};
     setSaveState("saving");
-    await persistNoteChanges(
-      latestDraft.dateKey,
-      latestDraft.content,
+    await persistEntryChanges(
+      {
+        [latestDraft.dateKey]: latestDraft.content,
+        ...allEntryDrafts
+      },
       latestDraft.title,
       latestDraft.folderId
     );
+    allEntryDraftsRef.current = {};
     setSaveState("saved");
-  }, [noteId, persistNoteChanges]);
+  }, [noteId, persistEntryChanges]);
 
   useEffect(() => {
     if (!noteId) {
@@ -290,7 +347,7 @@ export default function EditNoteScreen() {
     const timeout = setTimeout(async () => {
       setSaveState("saving");
       await persistNoteChanges(selectedDateKey, dayContent, title, folderId);
-      setSaveState("saved");
+      setSaveState(Object.keys(allEntryDraftsRef.current).length > 0 ? "dirty" : "saved");
     }, 450);
 
     return () => clearTimeout(timeout);
@@ -307,26 +364,6 @@ export default function EditNoteScreen() {
       void flushPendingSave();
     };
   }, [flushPendingSave]);
-
-  const handleSwipeStart = (event: GestureResponderEvent) => {
-    swipeStartX.current = event.nativeEvent.pageX;
-  };
-
-  const handleSwipeEnd = (event: GestureResponderEvent) => {
-    if (swipeStartX.current === null) {
-      return;
-    }
-
-    const distance = event.nativeEvent.pageX - swipeStartX.current;
-    swipeStartX.current = null;
-
-    if (Math.abs(distance) < 56) {
-      return;
-    }
-
-    const nextDate = addDays(selectedDate, distance > 0 ? -7 : 7);
-    void handleSelectDate(toDateKey(nextDate));
-  };
 
   const handleSelectDate = async (dateKey: string) => {
     if (dateKey === selectedDateKey) {
@@ -380,6 +417,30 @@ export default function EditNoteScreen() {
     );
   }
 
+  if (requiresNoteUnlock) {
+    return (
+      <ScreenContainer>
+        <LockCodeModal
+          visible
+          title="Note verrouillee"
+          description={containingFolder?.isLocked ? `Code du dossier "${containingFolder.name}".` : "Entre le code de cette note."}
+          mode="unlock"
+          error={unlockError}
+          onCancel={() => router.back()}
+          onSubmit={(code) => {
+            if (verifyLockCode(code, noteLockHash)) {
+              setUnlockError(null);
+              setNoteUnlocked(true);
+              return;
+            }
+
+            setUnlockError("Code incorrect.");
+          }}
+        />
+      </ScreenContainer>
+    );
+  }
+
   const handleMoveToFolder = async (nextFolderId: string | null) => {
     setFolderId(nextFolderId);
     await moveNote(note.id, nextFolderId);
@@ -395,6 +456,17 @@ export default function EditNoteScreen() {
     });
     setShowIconPicker(false);
     setShowIconModal(false);
+  };
+
+  const handleToggleNoteLock = async () => {
+    if (note.isLocked) {
+      setNoteLockError(null);
+      setNoteLockModalMode("unlock-remove");
+      return;
+    }
+
+    setNoteLockError(null);
+    setNoteLockModalMode("create");
   };
 
   const handleBack = async () => {
@@ -431,6 +503,46 @@ export default function EditNoteScreen() {
     setShowScrollTop((current) => (current === nextVisible ? current : nextVisible));
   };
 
+  const scrollToEditor = (targetY: number) => {
+    requestAnimationFrame(() => {
+      screenScrollRef.current?.scrollTo({ y: Math.max(targetY - 20, 0), animated: true });
+    });
+  };
+
+  const handleGlobalEntryChange = (dateKey: string, nextContent: string) => {
+    allEntryDraftsRef.current = {
+      ...allEntryDraftsRef.current,
+      [dateKey]: nextContent
+    };
+    setSaveState("dirty");
+
+    const currentTimeout = allEntrySaveTimeoutsRef.current[dateKey];
+
+    if (currentTimeout) {
+      clearTimeout(currentTimeout);
+    }
+
+    allEntrySaveTimeoutsRef.current[dateKey] = setTimeout(async () => {
+      const content = allEntryDraftsRef.current[dateKey] ?? "";
+      setSaveState("saving");
+      await persistEntryChanges(
+        { [dateKey]: content },
+        latestDraftRef.current.title,
+        latestDraftRef.current.folderId
+      );
+
+      const nextDrafts = { ...allEntryDraftsRef.current };
+      delete nextDrafts[dateKey];
+      allEntryDraftsRef.current = nextDrafts;
+
+      const nextTimeouts = { ...allEntrySaveTimeoutsRef.current };
+      delete nextTimeouts[dateKey];
+      allEntrySaveTimeoutsRef.current = nextTimeouts;
+
+      setSaveState(Object.keys(nextDrafts).length > 0 ? "dirty" : "saved");
+    }, 450);
+  };
+
   const renderModeButton = (mode: ViewMode, label: string, icon: keyof typeof Ionicons.glyphMap) => {
     const isActive = viewMode === mode;
 
@@ -442,9 +554,9 @@ export default function EditNoteScreen() {
           width: 44,
           height: 44,
           borderRadius: 16,
-          backgroundColor: isActive ? "#0F1B3A" : "#FFFFFF",
+          backgroundColor: isActive ? "#0F1B3A" : palette.surface,
           borderWidth: 1,
-          borderColor: isActive ? "#0F1B3A" : "#ECE6E0",
+          borderColor: isActive ? "#0F1B3A" : palette.border,
           alignItems: "center",
           justifyContent: "center"
         }}
@@ -495,9 +607,9 @@ export default function EditNoteScreen() {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderWidth: 1,
-              borderColor: "#ECE6E0",
+              borderColor: palette.border,
               alignItems: "center",
               justifyContent: "center"
             }}
@@ -513,9 +625,9 @@ export default function EditNoteScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: note.isPinned ? "#0F1B3A" : "#FFFFFF",
+                backgroundColor: note.isPinned ? "#0F1B3A" : palette.surface,
                 borderWidth: 1,
-                borderColor: note.isPinned ? "#0F1B3A" : "#ECE6E0",
+                borderColor: note.isPinned ? "#0F1B3A" : palette.border,
                 alignItems: "center",
                 justifyContent: "center"
               }}
@@ -529,9 +641,9 @@ export default function EditNoteScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: "#FFFFFF",
+                backgroundColor: palette.surface,
                 borderWidth: 1,
-                borderColor: "#ECE6E0",
+                borderColor: palette.border,
                 alignItems: "center",
                 justifyContent: "center"
               }}
@@ -553,9 +665,9 @@ export default function EditNoteScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: "#FFFFFF",
+                backgroundColor: palette.surface,
                 borderWidth: 1,
-                borderColor: "#ECE6E0",
+                borderColor: palette.border,
                 alignItems: "center",
                 justifyContent: "center"
               }}
@@ -596,7 +708,7 @@ export default function EditNoteScreen() {
             value={title}
             onChangeText={setTitle}
             placeholder="Titre"
-            placeholderTextColor="#B8AA9A"
+            placeholderTextColor={palette.placeholder}
             multiline
             scrollEnabled={false}
             style={[
@@ -618,7 +730,7 @@ export default function EditNoteScreen() {
         </View>
 
         {viewMode === "day" ? (
-          <View style={{ gap: 18 }} onTouchStart={handleSwipeStart} onTouchEnd={handleSwipeEnd}>
+          <View style={{ gap: 18 }}>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable
                 onPress={handleOpenDateModal}
@@ -647,9 +759,9 @@ export default function EditNoteScreen() {
                   maxWidth: 120,
                   paddingHorizontal: 14,
                   borderRadius: 14,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
@@ -657,8 +769,8 @@ export default function EditNoteScreen() {
                   opacity: pressed ? 0.82 : 1
                 })}
               >
-                <Ionicons name="folder-outline" size={13} color="#0F1B3A" />
-                <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 14 }]} numberOfLines={1}>
+                <Ionicons name="folder-outline" size={13} color={palette.text} />
+                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
                   {activeFolderLabel}
                 </Text>
               </Pressable>
@@ -669,32 +781,35 @@ export default function EditNoteScreen() {
                   minHeight: 42,
                   paddingHorizontal: 12,
                   borderRadius: 14,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 6
                 }}
               >
-                <Ionicons name="cloud" size={14} color="#0F1B3A" />
-                <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 14 }]} numberOfLines={1}>
+                <Ionicons name="cloud" size={14} color={palette.text} />
+                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
                   {saveState === "saving" ? "Sync..." : "Autosave"}
                 </Text>
               </View>
             </View>
 
             <View
+              onLayout={(event) => {
+                dayEditorYRef.current = event.nativeEvent.layout.y;
+              }}
               style={{
                 minHeight: 360,
                 borderRadius: 28,
-                backgroundColor: "#FFFFFF",
+                backgroundColor: palette.surface,
                 paddingHorizontal: 22,
                 paddingTop: 22,
                 paddingBottom: 20,
                 borderWidth: 1,
-                borderColor: "#F2EFEA"
+                borderColor: palette.border
               }}
             >
               <Text
@@ -708,12 +823,13 @@ export default function EditNoteScreen() {
               <TextInput
                 value={dayContent}
                 onChangeText={setDayContent}
+                onFocus={() => scrollToEditor(dayEditorYRef.current)}
                 placeholder={
                   selectedDateKey === todayKey
                     ? "Ecris quelque chose pour aujourd'hui..."
                     : "Ecris quelque chose pour cette date..."
                 }
-                placeholderTextColor="#B8B0A8"
+                placeholderTextColor={palette.placeholder}
                 multiline
                 scrollEnabled={false}
                 textAlignVertical="top"
@@ -721,7 +837,7 @@ export default function EditNoteScreen() {
                   theme.typography.body,
                   {
                     minHeight: 290,
-                    color: "#203047",
+                    color: palette.text,
                     fontSize: 17,
                     lineHeight: 32,
                     paddingVertical: 0
@@ -760,9 +876,9 @@ export default function EditNoteScreen() {
                   maxWidth: 120,
                   paddingHorizontal: 14,
                   borderRadius: 14,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
@@ -770,8 +886,8 @@ export default function EditNoteScreen() {
                   opacity: pressed ? 0.82 : 1
                 })}
               >
-                <Ionicons name="folder-outline" size={13} color="#0F1B3A" />
-                <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 14 }]} numberOfLines={1}>
+                <Ionicons name="folder-outline" size={13} color={palette.text} />
+                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
                   {activeFolderLabel}
                 </Text>
               </Pressable>
@@ -782,17 +898,17 @@ export default function EditNoteScreen() {
                   minHeight: 42,
                   paddingHorizontal: 12,
                   borderRadius: 14,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 6
                 }}
               >
-                <Ionicons name="cloud" size={14} color="#0F1B3A" />
-                <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 14 }]} numberOfLines={1}>
+                <Ionicons name="cloud" size={14} color={palette.text} />
+                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
                   {saveState === "saving" ? "Sync..." : "Autosave"}
                 </Text>
               </View>
@@ -805,12 +921,12 @@ export default function EditNoteScreen() {
               style={{
                 minHeight: otherEntries.length > 0 ? 480 : 260,
                 borderRadius: 28,
-                backgroundColor: "#FFFFFF",
+                backgroundColor: palette.surface,
                 paddingHorizontal: 22,
                 paddingTop: 26,
                 paddingBottom: 22,
                 borderWidth: 1,
-                borderColor: "#F2EFEA"
+                borderColor: palette.border
               }}
             >
             <View
@@ -821,14 +937,14 @@ export default function EditNoteScreen() {
                 gap: 14,
                 paddingBottom: otherEntries.length > 0 ? 28 : 0,
                 borderBottomWidth: otherEntries.length > 0 ? 1 : 0,
-                borderBottomColor: "#E8E3DF"
+                borderBottomColor: palette.divider
               }}
             >
               <Text
                 style={[
                   theme.typography.caption,
                   {
-                    color: "#A69F98",
+                    color: palette.textMuted,
                     letterSpacing: 2,
                     textTransform: "uppercase",
                     fontWeight: "900"
@@ -840,8 +956,9 @@ export default function EditNoteScreen() {
               <TextInput
                 value={dayContent}
                 onChangeText={setDayContent}
+                onFocus={() => scrollToEditor(allCardYRef.current)}
                 placeholder="Ecris quelque chose pour aujourd'hui..."
-                placeholderTextColor="#B8B0A8"
+                placeholderTextColor={palette.placeholder}
                 multiline
                 scrollEnabled={false}
                 textAlignVertical="top"
@@ -849,7 +966,7 @@ export default function EditNoteScreen() {
                   theme.typography.body,
                   {
                     minHeight: otherEntries.length > 0 ? 180 : 190,
-                    color: "#203047",
+                    color: palette.text,
                     fontSize: 17,
                     lineHeight: 30,
                     paddingVertical: 0
@@ -872,14 +989,14 @@ export default function EditNoteScreen() {
                     paddingTop: 18,
                     paddingBottom: isLastEntry ? 0 : 28,
                     borderBottomWidth: isLastEntry ? 0 : 1,
-                    borderBottomColor: "#E8E3DF"
+                    borderBottomColor: palette.divider
                   }}
                 >
                   <Text
                     style={[
                       theme.typography.caption,
                       {
-                        color: "#A69F98",
+                        color: palette.textMuted,
                         letterSpacing: 2,
                         textTransform: "uppercase",
                         fontWeight: "900"
@@ -888,18 +1005,26 @@ export default function EditNoteScreen() {
                   >
                     {entryDateFormatter.format(fromDateKey(entry.date))}
                   </Text>
-                  <Text
+                  <TextInput
+                    defaultValue={entry.content}
+                    onChangeText={(nextContent) => handleGlobalEntryChange(entry.date, nextContent)}
+                    onFocus={() => scrollToEditor(allCardYRef.current + (allEntryYRef.current[entry.date] ?? 0))}
+                    placeholder="Ecris quelque chose pour cette date..."
+                    placeholderTextColor={palette.placeholder}
+                    multiline
+                    scrollEnabled={false}
+                    textAlignVertical="top"
                     style={[
                       theme.typography.body,
                       {
-                        color: "#203047",
+                        minHeight: 72,
+                        color: palette.text,
                         fontSize: 17,
-                        lineHeight: 30
+                        lineHeight: 30,
+                        paddingVertical: 0
                       }
                     ]}
-                  >
-                    {compactDisplayContent(entry.content)}
-                  </Text>
+                  />
                 </View>
               );
             })}
@@ -920,7 +1045,7 @@ export default function EditNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 24,
@@ -935,11 +1060,11 @@ export default function EditNoteScreen() {
                 width: 48,
                 height: 5,
                 borderRadius: 4,
-                backgroundColor: "#C9CBD5"
+                backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5"
               }}
             />
 
-            <Text style={{ color: "#0F1B3A", fontSize: 27, lineHeight: 34, fontWeight: "900" }}>
+            <Text style={{ color: palette.text, fontSize: 27, lineHeight: 34, fontWeight: "900" }}>
               Changer la date
             </Text>
 
@@ -955,17 +1080,17 @@ export default function EditNoteScreen() {
                   width: 44,
                   height: 44,
                   borderRadius: 16,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="chevron-back" size={17} color="#0F1B3A" />
+                <Ionicons name="chevron-back" size={17} color={palette.text} />
               </Pressable>
 
-              <Text style={[theme.typography.h3, { color: "#0F1B3A", fontWeight: "900" }]}>
+              <Text style={[theme.typography.h3, { color: palette.text, fontWeight: "900" }]}>
                 {formattedCalendarMonth}
               </Text>
 
@@ -980,14 +1105,14 @@ export default function EditNoteScreen() {
                   width: 44,
                   height: 44,
                   borderRadius: 16,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="chevron-forward" size={17} color="#0F1B3A" />
+                <Ionicons name="chevron-forward" size={17} color={palette.text} />
               </Pressable>
             </View>
 
@@ -1001,7 +1126,7 @@ export default function EditNoteScreen() {
                       {
                         width: `${100 / 7}%`,
                         textAlign: "center",
-                        color: "#8D8F99",
+                        color: palette.textMuted,
                         fontWeight: "900"
                       }
                     ]}
@@ -1036,7 +1161,7 @@ export default function EditNoteScreen() {
                           width: 38,
                           height: 38,
                           borderRadius: 15,
-                          backgroundColor: isSelected ? "#0F1B3A" : isToday ? "#F2F4FA" : "transparent",
+                          backgroundColor: isSelected ? "#0F1B3A" : isToday ? palette.surfaceMuted : "transparent",
                           alignItems: "center",
                           justifyContent: "center"
                         }}
@@ -1045,7 +1170,7 @@ export default function EditNoteScreen() {
                           style={[
                             theme.typography.label,
                             {
-                              color: isSelected ? "#FFFFFF" : isOutside ? "#C6C8D0" : "#0F1B3A",
+                              color: isSelected ? "#FFFFFF" : isOutside ? palette.textMuted : palette.text,
                               fontWeight: isSelected || isToday ? "900" : "700"
                             }
                           ]}
@@ -1078,14 +1203,14 @@ export default function EditNoteScreen() {
                   flex: 1,
                   minHeight: 54,
                   borderRadius: 18,
-                  backgroundColor: "#FFFFFF",
+                  backgroundColor: palette.surface,
                   borderWidth: 1,
-                  borderColor: "#F0ECE7",
+                  borderColor: palette.border,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Text style={[theme.typography.label, { color: "#0F1B3A", fontSize: 15 }]}>
+                <Text style={[theme.typography.label, { color: palette.text, fontSize: 15 }]}>
                   {"Aujourd'hui"}
                 </Text>
               </Pressable>
@@ -1120,7 +1245,7 @@ export default function EditNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 24,
@@ -1135,12 +1260,12 @@ export default function EditNoteScreen() {
                 width: 48,
                 height: 5,
                 borderRadius: 4,
-                backgroundColor: "#C9CBD5",
+                backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5",
                 marginBottom: 20
               }}
             />
 
-            <Text style={{ color: "#0F1B3A", fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 18 }}>
+            <Text style={{ color: palette.text, fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 18 }}>
               Changer de dossier
             </Text>
 
@@ -1152,7 +1277,7 @@ export default function EditNoteScreen() {
                     minHeight: 58,
                     borderRadius: 19,
                     paddingHorizontal: 16,
-                    backgroundColor: folderId === null ? "#0F1B3A" : "#F7F5F2",
+                    backgroundColor: folderId === null ? "#0F1B3A" : palette.surfaceMuted,
                     flexDirection: "row",
                     alignItems: "center",
                     gap: 12,
@@ -1164,14 +1289,14 @@ export default function EditNoteScreen() {
                       width: 34,
                       height: 34,
                       borderRadius: 13,
-                      backgroundColor: folderId === null ? "rgba(255,255,255,0.14)" : "#FFFFFF",
+                      backgroundColor: folderId === null ? "rgba(255,255,255,0.14)" : palette.surface,
                       alignItems: "center",
                       justifyContent: "center"
                     }}
                   >
-                    <Ionicons name="folder-open-outline" size={16} color={folderId === null ? "#FFFFFF" : "#0F1B3A"} />
+                    <Ionicons name="folder-open-outline" size={16} color={folderId === null ? "#FFFFFF" : palette.text} />
                   </View>
-                  <Text style={[theme.typography.label, { color: folderId === null ? "#FFFFFF" : "#0F1B3A" }]}>
+                  <Text style={[theme.typography.label, { color: folderId === null ? "#FFFFFF" : palette.text }]}>
                     Perso
                   </Text>
                 </Pressable>
@@ -1187,7 +1312,7 @@ export default function EditNoteScreen() {
                         minHeight: 58,
                         borderRadius: 19,
                         paddingHorizontal: 16,
-                        backgroundColor: isActive ? "#0F1B3A" : "#F7F5F2",
+                        backgroundColor: isActive ? "#0F1B3A" : palette.surfaceMuted,
                         flexDirection: "row",
                         alignItems: "center",
                         gap: 12,
@@ -1199,14 +1324,14 @@ export default function EditNoteScreen() {
                           width: 34,
                           height: 34,
                           borderRadius: 13,
-                          backgroundColor: isActive ? "rgba(255,255,255,0.14)" : "#FFFFFF",
+                          backgroundColor: isActive ? "rgba(255,255,255,0.14)" : palette.surface,
                           alignItems: "center",
                           justifyContent: "center"
                         }}
                       >
-                        <Ionicons name="folder-outline" size={16} color={isActive ? "#FFFFFF" : "#0F1B3A"} />
+                        <Ionicons name="folder-outline" size={16} color={isActive ? "#FFFFFF" : palette.text} />
                       </View>
-                      <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : "#0F1B3A" }]}>
+                      <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : palette.text }]}>
                         {folder.name}
                       </Text>
                     </Pressable>
@@ -1235,7 +1360,7 @@ export default function EditNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderTopLeftRadius: 30,
               borderTopRightRadius: 30,
               paddingHorizontal: 26,
@@ -1250,13 +1375,13 @@ export default function EditNoteScreen() {
                 width: 48,
                 height: 5,
                 borderRadius: 4,
-                backgroundColor: "#C9CBD5",
+                backgroundColor: palette.isDark ? "rgba(255,255,255,0.26)" : "#C9CBD5",
                 marginBottom: 20
               }}
             />
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={{ color: "#0F1B3A", fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 24 }}>
+              <Text style={{ color: palette.text, fontSize: 27, lineHeight: 34, fontWeight: "900", marginBottom: 24 }}>
                 Options de note
               </Text>
 
@@ -1307,8 +1432,17 @@ export default function EditNoteScreen() {
                 />
 
                 <NoteOptionRow
+                  icon={note.isLocked ? "lock-open-outline" : "lock-closed-outline"}
+                  iconColor="#F97316"
+                  iconBackground="#FFF1DC"
+                  title={note.isLocked ? "Retirer le verrou" : "Securiser la note"}
+                  subtitle={containingFolder?.isLocked ? "Le dossier protege deja cette note" : "Demander un code a l'ouverture"}
+                  onPress={() => void handleToggleNoteLock()}
+                />
+
+                <NoteOptionRow
                   icon="hand-left-outline"
-                  iconColor="#0F1B3A"
+                  iconColor={palette.navy}
                   iconBackground="#E9ECF3"
                   title="Changer l'icone"
                   subtitle="Modifier le style de la note"
@@ -1335,7 +1469,7 @@ export default function EditNoteScreen() {
                               width: 58,
                               minHeight: 58,
                               borderRadius: 18,
-                              backgroundColor: isActive ? "#0F1B3A" : "#F3F0EC",
+                              backgroundColor: isActive ? "#0F1B3A" : palette.chip,
                               alignItems: "center",
                               justifyContent: "center"
                             }}
@@ -1370,7 +1504,7 @@ export default function EditNoteScreen() {
                           paddingHorizontal: 14,
                           minHeight: 38,
                           borderRadius: 15,
-                          backgroundColor: folderId === null ? "#0F1B3A" : "#F3F0EC",
+                          backgroundColor: folderId === null ? "#0F1B3A" : palette.chip,
                           alignItems: "center",
                           justifyContent: "center"
                         }}
@@ -1388,7 +1522,7 @@ export default function EditNoteScreen() {
                             paddingHorizontal: 14,
                             minHeight: 38,
                             borderRadius: 15,
-                            backgroundColor: folderId === folder.id ? "#0F1B3A" : "#F3F0EC",
+                            backgroundColor: folderId === folder.id ? "#0F1B3A" : palette.chip,
                             alignItems: "center",
                             justifyContent: "center"
                           }}
@@ -1441,21 +1575,21 @@ export default function EditNoteScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderRadius: 28,
               paddingHorizontal: 20,
               paddingTop: 20,
               paddingBottom: 20,
               gap: theme.spacing.md,
               borderWidth: 1,
-              borderColor: "#F1E8E2"
+              borderColor: palette.border
             }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#B8AA9A", letterSpacing: 2, textTransform: "uppercase" }
+                  { color: palette.textMuted, letterSpacing: 2, textTransform: "uppercase" }
                 ]}
               >
                 Icone de la note
@@ -1466,7 +1600,7 @@ export default function EditNoteScreen() {
                   width: 36,
                   height: 36,
                   borderRadius: 14,
-                  backgroundColor: "#F7F4F1",
+                  backgroundColor: palette.surfaceMuted,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
@@ -1489,7 +1623,7 @@ export default function EditNoteScreen() {
                       width: 72,
                       minHeight: 72,
                       borderRadius: 18,
-                      backgroundColor: isActive ? "#0F1B3A" : "#F3F0EC",
+                      backgroundColor: isActive ? "#0F1B3A" : palette.chip,
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 7
@@ -1523,6 +1657,38 @@ export default function EditNoteScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <LockCodeModal
+        visible={noteLockModalMode !== null}
+        title={noteLockModalMode === "unlock-remove" ? "Confirmer le code" : "Securiser la note"}
+        description={noteLockModalMode === "unlock-remove" ? "Entre le code actuel pour retirer le verrou." : "Cree un code pour ouvrir cette note."}
+        mode={noteLockModalMode === "unlock-remove" ? "unlock" : "create"}
+        confirmLabel={noteLockModalMode === "unlock-remove" ? "Retirer" : "Securiser"}
+        error={noteLockError}
+        onCancel={() => {
+          setNoteLockModalMode(null);
+          setNoteLockError(null);
+        }}
+        onSubmit={(code) => {
+          if (noteLockModalMode === "unlock-remove") {
+            if (!verifyLockCode(code, note.lockCodeHash ?? settings.lockCodeHash)) {
+              setNoteLockError("Code incorrect.");
+              return;
+            }
+
+            void updateNote(note.id, { isLocked: false, lockCodeHash: null });
+            setNoteLockModalMode(null);
+            setNoteLockError(null);
+            setShowActions(false);
+            return;
+          }
+
+          void updateNote(note.id, { isLocked: true, lockCodeHash: hashLockCode(code) });
+          setNoteLockModalMode(null);
+          setNoteLockError(null);
+          setShowActions(false);
+        }}
+      />
     </ScreenContainer>
   );
 }

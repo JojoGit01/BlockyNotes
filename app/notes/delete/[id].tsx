@@ -7,10 +7,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
 import { useNotesStore } from "@/store/useNotesStore";
+import { getAppPalette } from "@/theme/appPalette";
 
 export default function DeleteNoteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const note = useNotesStore((state) => state.notes.find((entry) => entry.id === id));
   const deleteNote = useNotesStore((state) => state.deleteNote);
 
@@ -37,15 +39,15 @@ export default function DeleteNoteScreen() {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "#F4F1EE",
+              backgroundColor: palette.surface,
               alignItems: "center",
               justifyContent: "center"
             }}
           >
-            <Ionicons name="close" size={20} color={theme.colors.text} />
+            <Ionicons name="close" size={20} color={palette.text} />
           </Pressable>
 
-          <Text style={[theme.typography.h3, { color: theme.colors.text }]}>Supprimer la note</Text>
+          <Text style={[theme.typography.h3, { color: palette.text }]}>Supprimer la note</Text>
         </View>
 
         <AppCard
@@ -53,7 +55,7 @@ export default function DeleteNoteScreen() {
             borderRadius: 28,
             paddingHorizontal: 22,
             paddingVertical: 24,
-            backgroundColor: "#FBFAF8"
+            backgroundColor: palette.surface
           }}
         >
           <View style={{ alignItems: "center" }}>
@@ -71,13 +73,13 @@ export default function DeleteNoteScreen() {
             </View>
           </View>
 
-          <Text style={[theme.typography.h2, { color: theme.colors.text, textAlign: "center", marginTop: 18 }]}>
+          <Text style={[theme.typography.h2, { color: palette.text, textAlign: "center", marginTop: 18 }]}>
             Supprimer &quot;{note.title || "Sans titre"}&quot; ?
           </Text>
           <Text
             style={[
               theme.typography.body,
-              { color: "#6C7385", textAlign: "center", marginTop: theme.spacing.md, lineHeight: 30 }
+              { color: palette.textMuted, textAlign: "center", marginTop: theme.spacing.md, lineHeight: 30 }
             ]}
           >
             La note sera envoyee dans la corbeille et pourra etre restauree pendant 30 jours.
@@ -90,12 +92,12 @@ export default function DeleteNoteScreen() {
                 flex: 1,
                 minHeight: 42,
                 borderRadius: 18,
-                backgroundColor: "#F1EEEB",
+                backgroundColor: palette.surfaceMuted,
                 alignItems: "center",
                 justifyContent: "center"
               }}
             >
-              <Text style={[theme.typography.label, { color: theme.colors.text }]}>Annuler</Text>
+              <Text style={[theme.typography.label, { color: palette.text }]}>Annuler</Text>
             </Pressable>
             <Pressable
               onPress={() => void handleConfirm()}

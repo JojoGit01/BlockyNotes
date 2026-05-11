@@ -9,7 +9,11 @@ const defaultSettings: AppSettings = {
   displayName: "BlockyNotes User",
   theme: "system",
   sortOrder: "updatedAt-desc",
-  showArchivedOnDashboard: true
+  showArchivedOnDashboard: true,
+  appLockEnabled: false,
+  lockAllNotes: false,
+  lockAllFolders: false,
+  lockCodeHash: null
 };
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -31,6 +35,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   updateSortOrder: async (sortOrder) => {
     const settings = { ...get().settings, sortOrder };
+    await settingsRepository.write(settings);
+    set({ settings });
+  },
+  updateSecurity: async (updates) => {
+    const settings = { ...get().settings, ...updates };
     await settingsRepository.write(settings);
     set({ settings });
   }

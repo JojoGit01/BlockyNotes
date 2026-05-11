@@ -5,15 +5,18 @@ import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-nativ
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppBackground } from "@/components/ui/AppBackground";
+import { AppHeaderLogo } from "@/components/ui/AppHeaderLogo";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
 import { sortNotes } from "@/lib/sort";
 import { getNoteIcon } from "@/services/notes/noteIcon";
 import { searchNotesService } from "@/services/notes/searchNotes";
+import { isNoteLocked } from "@/services/security/locks";
 import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useUIStore } from "@/store/useUIStore";
+import { getAppPalette } from "@/theme/appPalette";
 import type { Note, SortOrder } from "@/types/models";
 
 type NotesTab = "all" | "favorites" | "dated";
@@ -38,12 +41,13 @@ const noteElementCount = (note: Note) => {
 
 function NoteChip({ label, icon }: { label: string; icon?: keyof typeof Ionicons.glyphMap }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
 
   return (
     <View
       style={{
         borderRadius: 10,
-        backgroundColor: "#EEF0F4",
+        backgroundColor: palette.surfaceMuted,
         paddingHorizontal: 7,
         paddingVertical: 4,
         flexDirection: "row",
@@ -51,8 +55,8 @@ function NoteChip({ label, icon }: { label: string; icon?: keyof typeof Ionicons
         gap: 4
       }}
     >
-      {icon ? <Ionicons name={icon} size={10} color="#878A94" /> : null}
-      <Text style={[theme.typography.caption, { color: "#878A94", fontWeight: "900", fontSize: 10 }]} numberOfLines={1}>
+      {icon ? <Ionicons name={icon} size={10} color={palette.textMuted} /> : null}
+      <Text style={[theme.typography.caption, { color: palette.textMuted, fontWeight: "900", fontSize: 10 }]} numberOfLines={1}>
         {label}
       </Text>
     </View>
@@ -61,18 +65,23 @@ function NoteChip({ label, icon }: { label: string; icon?: keyof typeof Ionicons
 
 function NotesListItem({ note }: { note: Note }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const folder = useFoldersStore((state) => state.folders.find((entry) => entry.id === note.folderId));
+  const settings = useSettingsStore((state) => state.settings);
   const noteIcon = getNoteIcon(note);
+  const locked = isNoteLocked(note, folder, settings);
   const elementCount = noteElementCount(note);
   const contentPreview = note.content.trim().split(/\r?\n/).find(Boolean);
-  const subtitle =
-    elementCount > 1
+  const subtitle = locked
+    ? "Note verrouillee"
+    : elementCount > 1
       ? `${elementCount} elements - ${noteDateLabel(note.updatedAt)}`
       : contentPreview
         ? contentPreview
         : noteDateLabel(note.updatedAt);
   const chips = [
     folder?.name ?? (note.folderId === null ? "Personnel" : null),
+    locked ? "Verrouillee" : null,
     note.isFavorite ? "Favori" : null,
     note.isPinned ? "Epinglee" : null
   ].filter(Boolean) as string[];
@@ -83,11 +92,11 @@ function NotesListItem({ note }: { note: Note }) {
       style={({ pressed }) => ({
         minHeight: 88,
         borderRadius: 22,
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.surface,
         paddingHorizontal: 14,
         paddingVertical: 12,
         opacity: pressed ? 0.88 : 1,
-        shadowColor: "#0F172A",
+        shadowColor: palette.shadow,
         shadowOpacity: 0.06,
         shadowRadius: 18,
         shadowOffset: { width: 0, height: 10 },
@@ -105,14 +114,14 @@ function NotesListItem({ note }: { note: Note }) {
             justifyContent: "center"
           }}
         >
-          <Ionicons name={noteIcon.icon} size={20} color={noteIcon.color} />
+          <Ionicons name={locked ? "lock-closed" : noteIcon.icon} size={20} color={locked ? "#0F1B3A" : noteIcon.color} />
         </View>
 
         <View style={{ flex: 1 }}>
-          <Text style={[theme.typography.h3, { color: navy, fontSize: 16, lineHeight: 21, fontWeight: "900" }]} numberOfLines={1}>
+          <Text style={[theme.typography.h3, { color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "900" }]} numberOfLines={1}>
             {note.title || "Sans titre"}
           </Text>
-          <Text style={[theme.typography.caption, { color: "#8D8F99", marginTop: 1 }]} numberOfLines={1}>
+          <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
             {subtitle}
           </Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
@@ -121,7 +130,7 @@ function NotesListItem({ note }: { note: Note }) {
                 <NoteChip
                   key={chip}
                   label={chip}
-                  icon={chip === "Favori" ? "star" : chip === "Epinglee" ? "sparkles" : undefined}
+                  icon={chip === "Favori" ? "star" : chip === "Epinglee" ? "sparkles" : chip === "Verrouillee" ? "lock-closed" : undefined}
                 />
               ))
             ) : (
@@ -130,7 +139,7 @@ function NotesListItem({ note }: { note: Note }) {
           </View>
         </View>
 
-        <Ionicons name="chevron-forward" size={18} color="#A4A7B0" />
+        <Ionicons name="chevron-forward" size={18} color={palette.textMuted} />
       </View>
     </Pressable>
   );
@@ -138,6 +147,7 @@ function NotesListItem({ note }: { note: Note }) {
 
 export default function NotesScreen() {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const insets = useSafeAreaInsets();
   const folders = useFoldersStore((state) => state.folders);
   const notes = useNotesStore((state) => state.notes);
@@ -201,42 +211,24 @@ export default function NotesScreen() {
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: navy, letterSpacing: 5, textTransform: "uppercase", fontWeight: "900" }
+                  { color: palette.text, letterSpacing: 5, textTransform: "uppercase", fontWeight: "900" }
                 ]}
               >
                 Bibliotheque
               </Text>
-              <Text style={{ color: navy, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }}>
+              <Text style={{ color: palette.text, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }}>
                 Notes
               </Text>
             </View>
 
-            <Pressable
-              onPress={() => router.push("/notes/favorites")}
-              style={({ pressed }) => ({
-                width: 52,
-                height: 52,
-                borderRadius: 18,
-                backgroundColor: "#FFFFFF",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: pressed ? 0.82 : 1,
-                shadowColor: "#0F172A",
-                shadowOpacity: 0.08,
-                shadowRadius: 18,
-                shadowOffset: { width: 0, height: 10 },
-                elevation: 8
-              })}
-            >
-              <Ionicons name="star-outline" size={21} color={navy} />
-            </Pressable>
+            <AppHeaderLogo />
           </View>
 
           <View
             style={{
               minHeight: 46,
               borderRadius: 18,
-              backgroundColor: "#EDECF1",
+              backgroundColor: palette.surfaceMuted,
               padding: 4,
               flexDirection: "row"
             }}
@@ -260,7 +252,7 @@ export default function NotesScreen() {
                   <Text
                     style={[
                       theme.typography.label,
-                      { color: isActive ? "#FFFFFF" : "#8D8F99", fontWeight: "900" }
+                      { color: isActive ? "#FFFFFF" : palette.textMuted, fontWeight: "900" }
                     ]}
                   >
                     {tab.label}
@@ -274,12 +266,12 @@ export default function NotesScreen() {
             style={{
               minHeight: 56,
               borderRadius: 20,
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               flexDirection: "row",
               alignItems: "center",
               paddingHorizontal: 16,
               gap: 12,
-              shadowColor: "#0F172A",
+              shadowColor: palette.shadow,
               shadowOpacity: 0.05,
               shadowRadius: 18,
               shadowOffset: { width: 0, height: 10 },
@@ -291,8 +283,8 @@ export default function NotesScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Rechercher dans vos notes..."
-              placeholderTextColor="#767A82"
-              style={[theme.typography.body, { flex: 1, color: navy, paddingVertical: 8 }]}
+              placeholderTextColor={palette.placeholder}
+              style={[theme.typography.body, { flex: 1, color: palette.text, paddingVertical: 8 }]}
             />
             <Pressable
               onPress={() => setShowFilters(true)}
@@ -300,17 +292,17 @@ export default function NotesScreen() {
                 width: 34,
                 height: 34,
                 borderRadius: 13,
-                backgroundColor: "#F2F4F8",
+                backgroundColor: palette.surfaceMuted,
                 alignItems: "center",
                 justifyContent: "center",
                 opacity: pressed ? 0.82 : 1
               })}
             >
-              <Ionicons name="filter-outline" size={18} color={navy} />
+              <Ionicons name="filter-outline" size={18} color={palette.text} />
             </Pressable>
           </View>
 
-          <Text style={[theme.typography.label, { color: "#8A8F9A", fontWeight: "900" }]}>
+          <Text style={[theme.typography.label, { color: palette.textMuted, fontWeight: "900" }]}>
             {filteredNotes.length} note{filteredNotes.length > 1 ? "s" : ""} trouvee{filteredNotes.length > 1 ? "s" : ""}
           </Text>
 
@@ -347,7 +339,7 @@ export default function NotesScreen() {
           <Pressable
             onPress={() => undefined}
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: palette.surface,
               borderRadius: 28,
               paddingHorizontal: 20,
               paddingVertical: 20,
@@ -355,7 +347,7 @@ export default function NotesScreen() {
             }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={[theme.typography.caption, { color: navy, letterSpacing: 2, textTransform: "uppercase", fontWeight: "900" }]}>
+              <Text style={[theme.typography.caption, { color: palette.text, letterSpacing: 2, textTransform: "uppercase", fontWeight: "900" }]}>
                 Filtres
               </Text>
               <Pressable
@@ -364,17 +356,17 @@ export default function NotesScreen() {
                   width: 36,
                   height: 36,
                   borderRadius: 14,
-                  backgroundColor: "#F4F5F9",
+                  backgroundColor: palette.subtle,
                   alignItems: "center",
                   justifyContent: "center"
                 }}
               >
-                <Ionicons name="close" size={18} color={navy} />
+                <Ionicons name="close" size={18} color={palette.text} />
               </Pressable>
             </View>
 
             <View style={{ gap: theme.spacing.sm }}>
-              <Text style={[theme.typography.label, { color: navy }]}>Dossier</Text>
+              <Text style={[theme.typography.label, { color: palette.text }]}>Dossier</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
                 <Pressable
                   onPress={() => {
@@ -385,12 +377,12 @@ export default function NotesScreen() {
                     paddingHorizontal: 14,
                     minHeight: 40,
                     borderRadius: 16,
-                    backgroundColor: selectedFolderId === null ? navy : "#F3F0EC",
+                    backgroundColor: selectedFolderId === null ? navy : palette.chip,
                     alignItems: "center",
                     justifyContent: "center"
                   }}
                 >
-                  <Text style={[theme.typography.label, { color: selectedFolderId === null ? "#FFFFFF" : navy }]}>
+                  <Text style={[theme.typography.label, { color: selectedFolderId === null ? "#FFFFFF" : palette.text }]}>
                     Tous
                   </Text>
                 </Pressable>
@@ -406,12 +398,12 @@ export default function NotesScreen() {
                       paddingHorizontal: 14,
                       minHeight: 40,
                       borderRadius: 16,
-                      backgroundColor: selectedFolderId === folder.id ? navy : "#F3F0EC",
+                      backgroundColor: selectedFolderId === folder.id ? navy : palette.chip,
                       alignItems: "center",
                       justifyContent: "center"
                     }}
                   >
-                    <Text style={[theme.typography.label, { color: selectedFolderId === folder.id ? "#FFFFFF" : navy }]}>
+                    <Text style={[theme.typography.label, { color: selectedFolderId === folder.id ? "#FFFFFF" : palette.text }]}>
                       {folder.name}
                     </Text>
                   </Pressable>
@@ -420,7 +412,7 @@ export default function NotesScreen() {
             </View>
 
             <View style={{ gap: theme.spacing.sm }}>
-              <Text style={[theme.typography.label, { color: navy }]}>Tri</Text>
+              <Text style={[theme.typography.label, { color: palette.text }]}>Tri</Text>
               {[
                 { label: "Plus recentes", value: "updatedAt-desc" },
                 { label: "Plus anciennes", value: "updatedAt-asc" },
@@ -435,14 +427,14 @@ export default function NotesScreen() {
                     style={{
                       minHeight: 46,
                       borderRadius: 16,
-                      backgroundColor: isActive ? navy : "#F3F0EC",
+                      backgroundColor: isActive ? navy : palette.chip,
                       alignItems: "center",
                       justifyContent: "space-between",
                       flexDirection: "row",
                       paddingHorizontal: 14
                     }}
                   >
-                    <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : navy }]}>
+                    <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : palette.text }]}>
                       {option.label}
                     </Text>
                     {isActive ? <Ionicons name="checkmark" size={16} color="#FFFFFF" /> : null}

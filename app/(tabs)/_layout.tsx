@@ -21,7 +21,7 @@ export default function TabsLayout() {
       style={
         focused
           ? {
-              backgroundColor: "#0F172A",
+              backgroundColor: "#0F1B3A",
               width: 36,
               height: 36,
               textAlign: "center",
@@ -39,7 +39,7 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,
-        tabBarActiveTintColor: "#0F172A",
+        tabBarActiveTintColor: "#0F1B3A",
         tabBarInactiveTintColor: "#8B9098",
         tabBarStyle: {
           position: "absolute",
@@ -52,7 +52,7 @@ export default function TabsLayout() {
           borderTopWidth: 0,
           borderRadius: 24,
           backgroundColor: theme.colors.surface,
-          shadowColor: "#0F172A",
+          shadowColor: "#0F1B3A",
           shadowOpacity: 0.08,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: 10 },

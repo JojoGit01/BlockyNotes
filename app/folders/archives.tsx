@@ -8,12 +8,14 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
 import { useNotesStore } from "@/store/useNotesStore";
+import { getAppPalette } from "@/theme/appPalette";
 
 const monthLabel = (isoDate: string) =>
   new Date(isoDate).toLocaleDateString("fr-FR", { month: "short" });
 
 export default function FolderArchivesScreen() {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const notes = useNotesStore((state) => state.notes);
   const archivedNotes = useMemo(
     () =>
@@ -35,19 +37,19 @@ export default function FolderArchivesScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: "#F4F1EE",
+                backgroundColor: palette.surface,
                 alignItems: "center",
                 justifyContent: "center"
               }}
             >
-              <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
+              <Ionicons name="arrow-back" size={18} color={palette.text} />
             </Pressable>
 
             <View style={{ flex: 1 }}>
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#B8AA9A", letterSpacing: 3, textTransform: "uppercase" }
+                  { color: palette.textMuted, letterSpacing: 3, textTransform: "uppercase" }
                 ]}
               >
                 Stockage
@@ -55,7 +57,7 @@ export default function FolderArchivesScreen() {
               <Text
                 style={[
                   theme.typography.h1,
-                  { color: theme.colors.text, marginTop: theme.spacing.sm, fontSize: 38, lineHeight: 44 }
+                  { color: palette.text, marginTop: theme.spacing.sm, fontSize: 38, lineHeight: 44 }
                 ]}
               >
                 Archives
@@ -69,12 +71,12 @@ export default function FolderArchivesScreen() {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "#F4F1EE",
+              backgroundColor: palette.surface,
               alignItems: "center",
               justifyContent: "center"
             }}
           >
-            <Ionicons name="archive-outline" size={18} color={theme.colors.text} />
+            <Ionicons name="archive-outline" size={18} color={palette.text} />
           </Pressable>
         </View>
 

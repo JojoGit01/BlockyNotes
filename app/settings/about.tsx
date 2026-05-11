@@ -5,9 +5,11 @@ import { Pressable, Text, View } from "react-native";
 import { AppCard } from "@/components/ui/AppCard";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
+import { getAppPalette } from "@/theme/appPalette";
 
 function AboutRow({ label, value }: { label: string; value: string }) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
 
   return (
     <AppCard
@@ -15,12 +17,12 @@ function AboutRow({ label, value }: { label: string; value: string }) {
         borderRadius: 22,
         paddingHorizontal: 16,
         paddingVertical: 16,
-        backgroundColor: "#FFFFFF"
+        backgroundColor: palette.surface
       }}
     >
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <Text style={[theme.typography.h3, { color: theme.colors.text }]}>{label}</Text>
-        <Text style={[theme.typography.body, { color: "#8D857E" }]}>{value}</Text>
+        <Text style={[theme.typography.h3, { color: palette.text }]}>{label}</Text>
+        <Text style={[theme.typography.body, { color: palette.textMuted }]}>{value}</Text>
       </View>
     </AppCard>
   );
@@ -28,6 +30,7 @@ function AboutRow({ label, value }: { label: string; value: string }) {
 
 export default function AboutScreen() {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
 
   return (
     <ScreenContainer scrollable>
@@ -39,15 +42,15 @@ export default function AboutScreen() {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "#F4F1EE",
+              backgroundColor: palette.surface,
               alignItems: "center",
               justifyContent: "center"
             }}
           >
-            <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
+            <Ionicons name="arrow-back" size={18} color={palette.text} />
           </Pressable>
 
-          <Text style={[theme.typography.h3, { color: theme.colors.text }]}>A propos</Text>
+          <Text style={[theme.typography.h3, { color: palette.text }]}>A propos</Text>
         </View>
 
         <AppCard
@@ -55,7 +58,7 @@ export default function AboutScreen() {
             borderRadius: 28,
             paddingHorizontal: 20,
             paddingVertical: 20,
-            backgroundColor: "#F7F4FB"
+            backgroundColor: palette.surface
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: theme.spacing.md }}>
@@ -76,19 +79,19 @@ export default function AboutScreen() {
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#B8AA9A", letterSpacing: 3, textTransform: "uppercase" }
+                  { color: palette.textMuted, letterSpacing: 3, textTransform: "uppercase" }
                 ]}
               >
                 App perso
               </Text>
-              <Text style={[theme.typography.h3, { color: theme.colors.text, marginTop: 2 }]}>BlockyNotes</Text>
+              <Text style={[theme.typography.h3, { color: palette.text, marginTop: 2 }]}>BlockyNotes</Text>
             </View>
           </View>
 
           <Text
             style={[
               theme.typography.h1,
-              { color: theme.colors.text, marginTop: 18, fontSize: 24, lineHeight: 30 }
+              { color: palette.text, marginTop: 18, fontSize: 24, lineHeight: 30 }
             ]}
           >
             BlockyNotes
@@ -96,7 +99,7 @@ export default function AboutScreen() {
           <Text
             style={[
               theme.typography.body,
-              { color: "#6C7385", marginTop: theme.spacing.md, lineHeight: 30 }
+              { color: palette.textMuted, marginTop: theme.spacing.md, lineHeight: 30 }
             ]}
           >
             Une app personnelle pour ecrire, trier et retrouver tes idees rapidement.

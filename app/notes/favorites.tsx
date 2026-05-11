@@ -8,9 +8,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { useTheme } from "@/hooks/useTheme";
 import { useNotesStore } from "@/store/useNotesStore";
+import { getAppPalette } from "@/theme/appPalette";
 
 export default function FavoritesScreen() {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const notes = useNotesStore((state) => state.notes);
   const favoriteNotes = useMemo(
     () =>
@@ -31,19 +33,19 @@ export default function FavoritesScreen() {
                 width: 44,
                 height: 44,
                 borderRadius: 16,
-                backgroundColor: "#F4F1EE",
+                backgroundColor: palette.surface,
                 alignItems: "center",
                 justifyContent: "center"
               }}
             >
-              <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
+              <Ionicons name="arrow-back" size={18} color={palette.text} />
             </Pressable>
 
             <View style={{ flex: 1 }}>
               <Text
                 style={[
                   theme.typography.caption,
-                  { color: "#B8AA9A", letterSpacing: 3, textTransform: "uppercase" }
+                  { color: palette.textMuted, letterSpacing: 3, textTransform: "uppercase" }
                 ]}
               >
                 Collection
@@ -51,7 +53,7 @@ export default function FavoritesScreen() {
               <Text
                 style={[
                   theme.typography.h1,
-                  { color: theme.colors.text, marginTop: theme.spacing.sm, fontSize: 34, lineHeight: 40 }
+                  { color: palette.text, marginTop: theme.spacing.sm, fontSize: 34, lineHeight: 40 }
                 ]}
               >
                 Favoris
@@ -64,13 +66,13 @@ export default function FavoritesScreen() {
               minWidth: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "#F6F4F2",
+              backgroundColor: palette.surface,
               alignItems: "center",
               justifyContent: "center",
               paddingHorizontal: 12
             }}
           >
-            <Text style={[theme.typography.label, { color: theme.colors.text }]}>
+            <Text style={[theme.typography.label, { color: palette.text }]}>
               {favoriteNotes.length}
             </Text>
           </View>

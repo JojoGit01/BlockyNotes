@@ -35,6 +35,7 @@ export interface SettingsState {
   updateDisplayName: (displayName: string) => Promise<void>;
   updateTheme: (theme: AppSettings["theme"]) => Promise<void>;
   updateSortOrder: (sortOrder: AppSettings["sortOrder"]) => Promise<void>;
+  updateSecurity: (updates: Partial<AppSettings>) => Promise<void>;
 }
 
 export interface UIState {

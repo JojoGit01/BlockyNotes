@@ -6,6 +6,7 @@ import { AppCard } from "@/components/ui/AppCard";
 import { useTheme } from "@/hooks/useTheme";
 import { getNoteIcon } from "@/services/notes/noteIcon";
 import { useFoldersStore } from "@/store/useFoldersStore";
+import { getAppPalette } from "@/theme/appPalette";
 import type { Note } from "@/types/models";
 
 interface CollectionNoteAction {
@@ -23,6 +24,7 @@ interface CollectionNoteCardProps {
 
 export function CollectionNoteCard({ note, meta, actions = [], disabledOpen = false }: CollectionNoteCardProps) {
   const theme = useTheme();
+  const palette = getAppPalette(theme);
   const folder = useFoldersStore((state) => state.folders.find((entry) => entry.id === note.folderId));
   const noteIcon = getNoteIcon(note);
 
@@ -33,7 +35,8 @@ export function CollectionNoteCard({ note, meta, actions = [], disabledOpen = fa
         borderRadius: 22,
         paddingHorizontal: 16,
         paddingVertical: 16,
-        backgroundColor: "#FFFFFF"
+        backgroundColor: palette.surface,
+        borderColor: palette.border
       }}
     >
       <View style={{ gap: theme.spacing.md }}>
@@ -56,18 +59,18 @@ export function CollectionNoteCard({ note, meta, actions = [], disabledOpen = fa
               <Text style={[theme.typography.h3, { color: theme.colors.text, flex: 1 }]} numberOfLines={1}>
                 {note.title || "Sans titre"}
               </Text>
-              {note.isPinned ? <Ionicons name="pin" size={14} color="#0F1B3A" /> : null}
+              {note.isPinned ? <Ionicons name="pin" size={14} color={palette.text} /> : null}
               {note.isFavorite ? <Ionicons name="star" size={14} color="#D97706" /> : null}
             </View>
-            <Text style={[theme.typography.caption, { color: "#B5A89C", marginTop: 4 }]} numberOfLines={1}>
+            <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 4 }]} numberOfLines={1}>
               {meta ?? folder?.name ?? "Personnel"}
             </Text>
           </View>
 
-          {!disabledOpen ? <Ionicons name="chevron-forward" size={16} color="#B5A89C" /> : null}
+          {!disabledOpen ? <Ionicons name="chevron-forward" size={16} color={palette.textMuted} /> : null}
         </View>
 
-        <Text style={[theme.typography.body, { color: "#596579", lineHeight: 24 }]} numberOfLines={2}>
+        <Text style={[theme.typography.body, { color: palette.textMuted, lineHeight: 24 }]} numberOfLines={2}>
           {note.content || "Aucun contenu pour le moment."}
         </Text>
 
@@ -85,7 +88,7 @@ export function CollectionNoteCard({ note, meta, actions = [], disabledOpen = fa
                     flex: 1,
                     minHeight: 38,
                     borderRadius: 16,
-                    backgroundColor: isPrimary || isDanger ? "#0F1B3A" : "#F4F1EE",
+                    backgroundColor: isPrimary || isDanger ? "#0F1B3A" : palette.chip,
                     alignItems: "center",
                     justifyContent: "center"
                   }}
