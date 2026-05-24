@@ -13,6 +13,7 @@ const defaultSettings: AppSettings = {
   appLockEnabled: false,
   lockAllNotes: false,
   lockAllFolders: false,
+  appLockTimeoutMs: 60000,
   lockCodeHash: null
 };
 

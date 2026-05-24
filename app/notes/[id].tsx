@@ -35,6 +35,12 @@ import { getNoteLockHash, isNoteLocked } from "@/services/security/locks";
 
 type ViewMode = "day" | "all";
 
+const DAY_EDITOR_MIN_HEIGHT = 290;
+const DAY_EDITOR_MAX_HEIGHT = 520;
+const ALL_TODAY_EDITOR_MAX_HEIGHT = 380;
+const ALL_ENTRY_MIN_HEIGHT = 96;
+const ALL_ENTRY_MAX_HEIGHT = 320;
+const EDITOR_SELECTION_COLOR = "#7C4DFF";
 const dayLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 const entryDateFormatter = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
@@ -108,7 +114,7 @@ function NoteOptionRow({
 }
 
 export default function EditNoteScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, returnFolderId } = useLocalSearchParams<{ id: string; returnFolderId?: string }>();
   const theme = useTheme();
   const palette = getAppPalette(theme);
   const folders = useFoldersStore((state) => state.folders);
@@ -137,6 +143,7 @@ export default function EditNoteScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey());
   const [allJumpDateKey, setAllJumpDateKey] = useState(toDateKey());
+  const [editorContentHeights, setEditorContentHeights] = useState<Record<string, number>>({});
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -332,6 +339,16 @@ export default function EditNoteScreen() {
     setSaveState("saved");
   }, [noteId, persistEntryChanges]);
 
+  const handleBack = useCallback(async () => {
+    await flushPendingSave();
+    if (returnFolderId) {
+      router.replace({ pathname: "/folders/[id]", params: { id: returnFolderId } });
+      return;
+    }
+
+    router.back();
+  }, [flushPendingSave, returnFolderId]);
+
   useEffect(() => {
     if (!noteId) {
       return;
@@ -355,7 +372,7 @@ export default function EditNoteScreen() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      void flushPendingSave().then(() => router.back());
+      void handleBack();
       return true;
     });
 
@@ -363,7 +380,7 @@ export default function EditNoteScreen() {
       subscription.remove();
       void flushPendingSave();
     };
-  }, [flushPendingSave]);
+  }, [flushPendingSave, handleBack]);
 
   const handleSelectDate = async (dateKey: string) => {
     if (dateKey === selectedDateKey) {
@@ -426,7 +443,7 @@ export default function EditNoteScreen() {
           description={containingFolder?.isLocked ? `Code du dossier "${containingFolder.name}".` : "Entre le code de cette note."}
           mode="unlock"
           error={unlockError}
-          onCancel={() => router.back()}
+          onCancel={handleBack}
           onSubmit={(code) => {
             if (verifyLockCode(code, noteLockHash)) {
               setUnlockError(null);
@@ -469,11 +486,6 @@ export default function EditNoteScreen() {
     setNoteLockModalMode("create");
   };
 
-  const handleBack = async () => {
-    await flushPendingSave();
-    router.back();
-  };
-
   const handleChangeMode = async (mode: ViewMode) => {
     if (mode === viewMode) {
       return;
@@ -508,6 +520,26 @@ export default function EditNoteScreen() {
       screenScrollRef.current?.scrollTo({ y: Math.max(targetY - 20, 0), animated: true });
     });
   };
+
+  const rememberEditorContentHeight = (editorKey: string, height: number) => {
+    const roundedHeight = Math.ceil(height) + 8;
+
+    setEditorContentHeights((currentHeights) => {
+      if (currentHeights[editorKey] === roundedHeight) {
+        return currentHeights;
+      }
+
+      return {
+        ...currentHeights,
+        [editorKey]: roundedHeight
+      };
+    });
+  };
+
+  const getEditorHeight = (editorKey: string, minHeight: number, maxHeight: number) =>
+    Math.min(Math.max(editorContentHeights[editorKey] ?? minHeight, minHeight), maxHeight);
+
+  const canScrollEditor = (editorKey: string, maxHeight: number) => (editorContentHeights[editorKey] ?? 0) > maxHeight;
 
   const handleGlobalEntryChange = (dateKey: string, nextContent: string) => {
     allEntryDraftsRef.current = {
@@ -594,6 +626,8 @@ export default function EditNoteScreen() {
         ) : null
       }
       onScroll={handleScreenScroll}
+      keyboardDismissMode="none"
+      keyboardShouldPersistTaps="always"
       scrollEventThrottle={16}
       scrollBottomPadding={12}
       scrollRef={screenScrollRef}
@@ -711,6 +745,8 @@ export default function EditNoteScreen() {
             placeholderTextColor={palette.placeholder}
             multiline
             scrollEnabled={false}
+            selectionColor={EDITOR_SELECTION_COLOR}
+            cursorColor={EDITOR_SELECTION_COLOR}
             style={[
               theme.typography.h1,
               {
@@ -824,6 +860,8 @@ export default function EditNoteScreen() {
                 value={dayContent}
                 onChangeText={setDayContent}
                 onFocus={() => scrollToEditor(dayEditorYRef.current)}
+                onPressIn={() => scrollToEditor(dayEditorYRef.current)}
+                onContentSizeChange={(event) => rememberEditorContentHeight(`day:${selectedDateKey}`, event.nativeEvent.contentSize.height)}
                 placeholder={
                   selectedDateKey === todayKey
                     ? "Ecris quelque chose pour aujourd'hui..."
@@ -831,12 +869,14 @@ export default function EditNoteScreen() {
                 }
                 placeholderTextColor={palette.placeholder}
                 multiline
-                scrollEnabled={false}
+                scrollEnabled={canScrollEditor(`day:${selectedDateKey}`, DAY_EDITOR_MAX_HEIGHT)}
+                selectionColor={EDITOR_SELECTION_COLOR}
+                cursorColor={EDITOR_SELECTION_COLOR}
                 textAlignVertical="top"
                 style={[
                   theme.typography.body,
                   {
-                    minHeight: 290,
+                    height: getEditorHeight(`day:${selectedDateKey}`, DAY_EDITOR_MIN_HEIGHT, DAY_EDITOR_MAX_HEIGHT),
                     color: palette.text,
                     fontSize: 17,
                     lineHeight: 32,
@@ -957,15 +997,19 @@ export default function EditNoteScreen() {
                 value={dayContent}
                 onChangeText={setDayContent}
                 onFocus={() => scrollToEditor(allCardYRef.current)}
+                onPressIn={() => scrollToEditor(allCardYRef.current)}
+                onContentSizeChange={(event) => rememberEditorContentHeight(`all:${todayKey}`, event.nativeEvent.contentSize.height)}
                 placeholder="Ecris quelque chose pour aujourd'hui..."
                 placeholderTextColor={palette.placeholder}
                 multiline
-                scrollEnabled={false}
+                scrollEnabled={canScrollEditor(`all:${todayKey}`, ALL_TODAY_EDITOR_MAX_HEIGHT)}
+                selectionColor={EDITOR_SELECTION_COLOR}
+                cursorColor={EDITOR_SELECTION_COLOR}
                 textAlignVertical="top"
                 style={[
                   theme.typography.body,
                   {
-                    minHeight: otherEntries.length > 0 ? 180 : 190,
+                    height: getEditorHeight(`all:${todayKey}`, otherEntries.length > 0 ? 180 : 190, ALL_TODAY_EDITOR_MAX_HEIGHT),
                     color: palette.text,
                     fontSize: 17,
                     lineHeight: 30,
@@ -1009,15 +1053,19 @@ export default function EditNoteScreen() {
                     defaultValue={entry.content}
                     onChangeText={(nextContent) => handleGlobalEntryChange(entry.date, nextContent)}
                     onFocus={() => scrollToEditor(allCardYRef.current + (allEntryYRef.current[entry.date] ?? 0))}
+                    onPressIn={() => scrollToEditor(allCardYRef.current + (allEntryYRef.current[entry.date] ?? 0))}
+                    onContentSizeChange={(event) => rememberEditorContentHeight(`all:${entry.date}`, event.nativeEvent.contentSize.height)}
                     placeholder="Ecris quelque chose pour cette date..."
                     placeholderTextColor={palette.placeholder}
                     multiline
-                    scrollEnabled={false}
+                    scrollEnabled={canScrollEditor(`all:${entry.date}`, ALL_ENTRY_MAX_HEIGHT)}
+                    selectionColor={EDITOR_SELECTION_COLOR}
+                    cursorColor={EDITOR_SELECTION_COLOR}
                     textAlignVertical="top"
                     style={[
                       theme.typography.body,
                       {
-                        minHeight: 72,
+                        height: getEditorHeight(`all:${entry.date}`, ALL_ENTRY_MIN_HEIGHT, ALL_ENTRY_MAX_HEIGHT),
                         color: palette.text,
                         fontSize: 17,
                         lineHeight: 30,

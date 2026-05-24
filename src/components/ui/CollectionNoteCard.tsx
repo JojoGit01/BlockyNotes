@@ -5,12 +5,15 @@ import { Pressable, Text, View } from "react-native";
 import { AppCard } from "@/components/ui/AppCard";
 import { useTheme } from "@/hooks/useTheme";
 import { getNoteIcon } from "@/services/notes/noteIcon";
+import { isNoteLocked } from "@/services/security/locks";
 import { useFoldersStore } from "@/store/useFoldersStore";
+import { useSettingsStore } from "@/store/useSettingsStore";
 import { getAppPalette } from "@/theme/appPalette";
 import type { Note } from "@/types/models";
 
 interface CollectionNoteAction {
   label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
   onPress: () => void | Promise<void>;
   variant?: "primary" | "secondary" | "danger";
 }
@@ -26,7 +29,10 @@ export function CollectionNoteCard({ note, meta, actions = [], disabledOpen = fa
   const theme = useTheme();
   const palette = getAppPalette(theme);
   const folder = useFoldersStore((state) => state.folders.find((entry) => entry.id === note.folderId));
+  const settings = useSettingsStore((state) => state.settings);
   const noteIcon = getNoteIcon(note);
+  const locked = isNoteLocked(note, folder, settings);
+  const stackActions = actions.some((action) => action.label.length > 18);
 
   return (
     <AppCard
@@ -51,7 +57,7 @@ export function CollectionNoteCard({ note, meta, actions = [], disabledOpen = fa
               justifyContent: "center"
             }}
           >
-            <Ionicons name={noteIcon.icon} size={17} color={noteIcon.color} />
+            <Ionicons name={locked ? "lock-closed" : noteIcon.icon} size={17} color={locked ? "#0F1B3A" : noteIcon.color} />
           </View>
 
           <View style={{ flex: 1 }}>
@@ -61,9 +67,10 @@ export function CollectionNoteCard({ note, meta, actions = [], disabledOpen = fa
               </Text>
               {note.isPinned ? <Ionicons name="pin" size={14} color={palette.text} /> : null}
               {note.isFavorite ? <Ionicons name="star" size={14} color="#D97706" /> : null}
+              {locked ? <Ionicons name="shield-checkmark" size={14} color="#4F6EF7" /> : null}
             </View>
             <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 4 }]} numberOfLines={1}>
-              {meta ?? folder?.name ?? "Personnel"}
+              {locked ? "Contenu masque - code requis" : meta ?? folder?.name ?? "Personnel"}
             </Text>
           </View>
 
@@ -71,33 +78,39 @@ export function CollectionNoteCard({ note, meta, actions = [], disabledOpen = fa
         </View>
 
         <Text style={[theme.typography.body, { color: palette.textMuted, lineHeight: 24 }]} numberOfLines={2}>
-          {note.content || "Aucun contenu pour le moment."}
+          {locked ? "Cette note est securisee. Deverrouille-la pour afficher son contenu." : note.content || "Aucun contenu pour le moment."}
         </Text>
 
         {actions.length > 0 ? (
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+          <View style={{ flexDirection: stackActions ? "column" : "row", gap: theme.spacing.sm }}>
             {actions.map((action) => {
               const isPrimary = action.variant === "primary";
               const isDanger = action.variant === "danger";
+              const backgroundColor = isPrimary ? "#0F1B3A" : isDanger ? "#FFE6E6" : palette.chip;
+              const textColor = isPrimary ? "#FFFFFF" : isDanger ? "#FF3434" : theme.colors.text;
 
               return (
                 <Pressable
                   key={action.label}
                   onPress={() => void action.onPress()}
                   style={{
-                    flex: 1,
+                    flex: stackActions ? undefined : 1,
                     minHeight: 38,
                     borderRadius: 16,
-                    backgroundColor: isPrimary || isDanger ? "#0F1B3A" : palette.chip,
+                    backgroundColor,
+                    flexDirection: "row",
+                    gap: 6,
                     alignItems: "center",
                     justifyContent: "center"
                   }}
                 >
+                  {action.icon ? <Ionicons name={action.icon} size={14} color={textColor} /> : null}
                   <Text
                     style={[
                       theme.typography.label,
-                      { color: isPrimary || isDanger ? "#FFFFFF" : theme.colors.text }
+                      { color: textColor }
                     ]}
+                    numberOfLines={1}
                   >
                     {action.label}
                   </Text>

@@ -9,6 +9,8 @@ import { useTheme } from "@/hooks/useTheme";
 interface ScreenContainerProps extends PropsWithChildren {
   floatingElement?: ReactNode;
   onScroll?: ScrollViewProps["onScroll"];
+  keyboardDismissMode?: ScrollViewProps["keyboardDismissMode"];
+  keyboardShouldPersistTaps?: ScrollViewProps["keyboardShouldPersistTaps"];
   scrollEventThrottle?: number;
   scrollRef?: Ref<ScrollView>;
   scrollable?: boolean;
@@ -18,6 +20,8 @@ interface ScreenContainerProps extends PropsWithChildren {
 export function ScreenContainer({
   children,
   floatingElement,
+  keyboardDismissMode,
+  keyboardShouldPersistTaps,
   onScroll,
   scrollable = false,
   scrollBottomPadding,
@@ -58,8 +62,8 @@ export function ScreenContainer({
               flexGrow: 1,
               paddingBottom: scrollBottomPadding ?? theme.spacing.xxl + bottomSafeSpace + tabBarSafeSpace
             }}
-            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={keyboardDismissMode ?? (Platform.OS === "ios" ? "interactive" : "on-drag")}
+            keyboardShouldPersistTaps={keyboardShouldPersistTaps ?? "handled"}
             onScroll={onScroll}
             ref={scrollRef}
             scrollEventThrottle={scrollEventThrottle}

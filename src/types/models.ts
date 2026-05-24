@@ -71,6 +71,7 @@ export interface Tag {
 
 export type ThemeMode = "system" | "light" | "dark";
 export type SortOrder = "updatedAt-desc" | "updatedAt-asc" | "title-asc";
+export type AppLockTimeout = 0 | 60000 | 300000;
 
 export interface AppSettings {
   displayName: string;
@@ -80,5 +81,6 @@ export interface AppSettings {
   appLockEnabled?: boolean;
   lockAllNotes?: boolean;
   lockAllFolders?: boolean;
+  appLockTimeoutMs?: AppLockTimeout;
   lockCodeHash?: string | null;
 }

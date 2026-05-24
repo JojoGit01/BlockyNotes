@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, AppState, View } from "react-native";
 
 import { LockCodeModal } from "@/components/security/LockCodeModal";
 import { useBootstrap } from "@/hooks/useBootstrap";
@@ -16,6 +16,7 @@ export default function RootLayout() {
   const [appUnlocked, setAppUnlocked] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
   const previousAppLockEnabled = useRef(settings.appLockEnabled);
+  const backgroundAtRef = useRef<number | null>(null);
   const requiresAppUnlock = Boolean(settings.appLockEnabled && settings.lockCodeHash && !appUnlocked);
 
   useEffect(() => {
@@ -29,6 +30,35 @@ export default function RootLayout() {
 
     previousAppLockEnabled.current = settings.appLockEnabled;
   }, [settings.appLockEnabled]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (!settings.appLockEnabled || !settings.lockCodeHash) {
+        return;
+      }
+
+      if (nextState === "background" || nextState === "inactive") {
+        backgroundAtRef.current = Date.now();
+
+        if ((settings.appLockTimeoutMs ?? 60000) === 0) {
+          setAppUnlocked(false);
+        }
+
+        return;
+      }
+
+      if (nextState === "active") {
+        const backgroundAt = backgroundAtRef.current;
+        backgroundAtRef.current = null;
+
+        if (backgroundAt && Date.now() - backgroundAt >= (settings.appLockTimeoutMs ?? 60000)) {
+          setAppUnlocked(false);
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [settings.appLockEnabled, settings.appLockTimeoutMs, settings.lockCodeHash]);
 
   if (!isReady) {
     return (

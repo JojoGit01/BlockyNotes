@@ -1,5 +1,4 @@
-import { Text, ViewStyle } from "react-native";
-import { Pressable } from "react-native";
+import { Pressable, Text, ViewStyle } from "react-native";
 
 import { useTheme } from "@/hooks/useTheme";
 

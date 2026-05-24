@@ -27,8 +27,24 @@ const calendarMonthFormatter = new Intl.DateTimeFormat("fr-FR", {
   year: "numeric"
 });
 
+type DraftSnapshot = {
+  content: string;
+  entries: NoteDailyEntry[];
+  noteId: string | null;
+  selectedDateKey: string;
+  title: string;
+};
+
+const hasMeaningfulDraft = (draft: DraftSnapshot) =>
+  draft.title.trim().length > 0 ||
+  draft.content.trim().length > 0 ||
+  draft.entries.some((entry) => entry.date !== draft.selectedDateKey && entry.content.trim().length > 0);
+
 export default function NewNoteScreen() {
-  const { folderId: folderIdParam } = useLocalSearchParams<{ folderId?: string }>();
+  const { folderId: folderIdParam, returnFolderId } = useLocalSearchParams<{
+    folderId?: string;
+    returnFolderId?: string;
+  }>();
   const theme = useTheme();
   const palette = getAppPalette(theme);
   const folders = useFoldersStore((state) => state.folders);
@@ -61,10 +77,48 @@ export default function NewNoteScreen() {
   const dayEditorYRef = useRef(0);
   const globalEditorYRef = useRef(0);
   const latestEntriesRef = useRef<NoteDailyEntry[]>([]);
+  const draftSnapshotRef = useRef<DraftSnapshot>({
+    content: "",
+    entries: [],
+    noteId: null,
+    selectedDateKey: toDateKey(),
+    title: ""
+  });
   const todayKey = toDateKey();
   const [folderId, setFolderId] = useState<string | null>(
     folderIdParam && folderIdParam !== "personal" ? folderIdParam : null
   );
+
+  const purgeEmptyDraft = useCallback(async () => {
+    const draft = draftSnapshotRef.current;
+
+    if (!draft.noteId || hasMeaningfulDraft(draft)) {
+      return false;
+    }
+
+    await purgeNote(draft.noteId);
+    latestEntriesRef.current = [];
+    draftSnapshotRef.current = {
+      content: "",
+      entries: [],
+      noteId: null,
+      selectedDateKey,
+      title: ""
+    };
+
+    return true;
+  }, [purgeNote, selectedDateKey]);
+
+  const goBack = async () => {
+    await purgeEmptyDraft();
+
+    if (returnFolderId) {
+      router.replace({ pathname: "/folders/[id]", params: { id: returnFolderId } });
+      return;
+    }
+
+    router.back();
+  };
 
   const previewNote = useMemo(
     () =>
@@ -105,10 +159,34 @@ export default function NewNoteScreen() {
   }, [folderId, folders]);
 
   useEffect(() => {
-    const hasDraftContent =
-      title.trim().length > 0 ||
-      content.trim().length > 0 ||
-      latestEntriesRef.current.some((entry) => entry.content.trim().length > 0);
+    draftSnapshotRef.current = {
+      content,
+      entries: latestEntriesRef.current,
+      noteId,
+      selectedDateKey,
+      title
+    };
+  });
+
+  useEffect(
+    () => () => {
+      const draft = draftSnapshotRef.current;
+
+      if (draft.noteId && !hasMeaningfulDraft(draft)) {
+        void purgeNote(draft.noteId);
+      }
+    },
+    [purgeNote]
+  );
+
+  useEffect(() => {
+    const hasDraftContent = hasMeaningfulDraft({
+      content,
+      entries: latestEntriesRef.current,
+      noteId,
+      selectedDateKey,
+      title
+    });
 
     if (!hasDraftContent) {
       setSaveState("saved");
@@ -285,7 +363,7 @@ export default function NewNoteScreen() {
     }
 
     setShowActions(false);
-    router.back();
+    await goBack();
   };
 
   const scrollToEditor = (targetY: number) => {
@@ -302,7 +380,7 @@ export default function NewNoteScreen() {
       <View style={{ gap: theme.spacing.lg, paddingBottom: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => void goBack()}
             style={{
               width: 44,
               height: 44,
