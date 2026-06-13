@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppBackground } from "@/components/ui/AppBackground";
 import { AppHeaderLogo } from "@/components/ui/AppHeaderLogo";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
 import { getFolderIcon } from "@/services/folders/folderIcon";
 import { getNoteIcon } from "@/services/notes/noteIcon";
@@ -120,11 +121,17 @@ function HomeNoteRow({ note, query = "" }: { note: Note; query?: string }) {
   const noteIcon = getNoteIcon(note);
   const locked = isNoteLocked(note, folder, settings);
   const elementCount = noteElementCount(note);
+  const noteMode = note.noteMode ?? "day";
+  const contentPreview = note.content.trim().split(/\r?\n/).find(Boolean);
   const meta =
     locked
       ? "Contenu masque - code requis"
+      : noteMode === "free" && contentPreview
+      ? contentPreview
       : elementCount > 1
       ? `${elementCount} elements - ${noteDateLabel(note.updatedAt)}`
+      : noteMode === "free"
+      ? "Note libre"
       : `${noteDateLabel(note.updatedAt)} - Mode jour par jour`;
 
   return (
@@ -266,41 +273,65 @@ export default function DashboardScreen() {
   const searchQuery = useUIStore((state) => state.searchQuery);
   const setSearchQuery = useUIStore((state) => state.setSearchQuery);
   const visibleDisplayName = displayName === "BlockyNotes User" ? "Jo" : displayName.trim();
-  const activeNotes = notes.filter((note) => !note.isDeleted && !note.isArchived);
-  const pinnedNotes = activeNotes
-    .filter((note) => note.isPinned)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 2);
-  const favoriteNotesCount = activeNotes.filter((note) => note.isFavorite).length;
-  const recentNotes = activeNotes
-    .filter((note) => !note.isPinned)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 3);
-  const trimmedSearchQuery = searchQuery.trim();
-  const activeSearchResults = trimmedSearchQuery
-    ? searchNotesService(activeNotes, trimmedSearchQuery).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4)
-    : [];
-  const folderSearchResults = trimmedSearchQuery
-    ? ([{ id: null, name: "Personnel" }, ...folders] as (Pick<Folder, "id" | "iconKey" | "name"> | { id: null; name: string })[])
-        .filter((folder) => includesQuery(folder.name, trimmedSearchQuery))
-        .slice(0, 4)
-    : [];
-  const archiveSearchResults = trimmedSearchQuery
-    ? searchNotesService(
-        notes.filter((note) => note.isArchived && !note.isDeleted),
-        trimmedSearchQuery
-      )
+  const activeNotes = useMemo(() => notes.filter((note) => !note.isDeleted && !note.isArchived), [notes]);
+  const pinnedNotes = useMemo(
+    () =>
+      activeNotes
+        .filter((note) => note.isPinned)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .slice(0, 4)
-    : [];
-  const trashSearchResults = trimmedSearchQuery
-    ? searchNotesService(
-        notes.filter((note) => note.isDeleted),
-        trimmedSearchQuery
-      )
-        .sort((a, b) => (b.deletedAt ?? b.updatedAt).localeCompare(a.deletedAt ?? a.updatedAt))
-        .slice(0, 4)
-    : [];
+        .slice(0, 2),
+    [activeNotes]
+  );
+  const favoriteNotesCount = useMemo(() => activeNotes.filter((note) => note.isFavorite).length, [activeNotes]);
+  const recentNotes = useMemo(
+    () =>
+      activeNotes
+        .filter((note) => !note.isPinned)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 3),
+    [activeNotes]
+  );
+  const trimmedSearchQuery = searchQuery.trim();
+  const activeSearchResults = useMemo(
+    () =>
+      trimmedSearchQuery
+        ? searchNotesService(activeNotes, trimmedSearchQuery).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4)
+        : [],
+    [activeNotes, trimmedSearchQuery]
+  );
+  const folderSearchResults = useMemo(
+    () =>
+      trimmedSearchQuery
+        ? ([{ id: null, name: "Personnel" }, ...folders] as (Pick<Folder, "id" | "iconKey" | "name"> | { id: null; name: string })[])
+            .filter((folder) => includesQuery(folder.name, trimmedSearchQuery))
+            .slice(0, 4)
+        : [],
+    [folders, trimmedSearchQuery]
+  );
+  const archiveSearchResults = useMemo(
+    () =>
+      trimmedSearchQuery
+        ? searchNotesService(
+            notes.filter((note) => note.isArchived && !note.isDeleted),
+            trimmedSearchQuery
+          )
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+            .slice(0, 4)
+        : [],
+    [notes, trimmedSearchQuery]
+  );
+  const trashSearchResults = useMemo(
+    () =>
+      trimmedSearchQuery
+        ? searchNotesService(
+            notes.filter((note) => note.isDeleted),
+            trimmedSearchQuery
+          )
+            .sort((a, b) => (b.deletedAt ?? b.updatedAt).localeCompare(a.deletedAt ?? a.updatedAt))
+            .slice(0, 4)
+        : [],
+    [notes, trimmedSearchQuery]
+  );
   const totalSearchResults =
     activeSearchResults.length + folderSearchResults.length + archiveSearchResults.length + trashSearchResults.length;
   const floatingButtonBottom = insets.bottom + 90;
@@ -500,20 +531,15 @@ export default function DashboardScreen() {
                   </SearchSection>
                 </>
               ) : (
-                <View
-                  style={{
-                    borderRadius: 20,
-                    backgroundColor: palette.surface,
-                    padding: 14,
-                    shadowColor: palette.shadow,
-                    shadowOpacity: 0.05,
-                    shadowRadius: 18,
-                    shadowOffset: { width: 0, height: 10 },
-                    elevation: 5
-                  }}
-                >
-                  <Text style={[theme.typography.body, { color: palette.textMuted }]}>Aucune note trouvee.</Text>
-                </View>
+                <EmptyState
+                  title="Aucun resultat"
+                  description="Essaie un autre mot-cle ou ouvre la recherche complete dans Notes."
+                  icon="search-outline"
+                  iconBackgroundColor="#E4ECFF"
+                  iconColor="#4F6EF7"
+                  actionLabel="Ouvrir Notes"
+                  onActionPress={() => router.push("/notes")}
+                />
               )}
             </View>
           ) : (
@@ -542,20 +568,15 @@ export default function DashboardScreen() {
                 {recentNotes.length > 0 ? (
                   recentNotes.map((note) => <HomeNoteRow key={note.id} note={note} />)
                 ) : (
-                  <View
-                    style={{
-                      borderRadius: 20,
-                      backgroundColor: palette.surface,
-                      padding: 14,
-                      shadowColor: palette.shadow,
-                      shadowOpacity: 0.05,
-                      shadowRadius: 18,
-                      shadowOffset: { width: 0, height: 10 },
-                      elevation: 5
-                    }}
-                  >
-                    <Text style={[theme.typography.body, { color: palette.textMuted }]}>Aucune note recente pour le moment.</Text>
-                  </View>
+                  <EmptyState
+                    title="Aucune note recente"
+                    description="Cree une note pour commencer a remplir ton espace."
+                    icon="create-outline"
+                    iconBackgroundColor="#D8FAF1"
+                    iconColor="#18A058"
+                    actionLabel="Creer une note"
+                    onActionPress={() => router.push("/notes/new")}
+                  />
                 )}
               </View>
             </>

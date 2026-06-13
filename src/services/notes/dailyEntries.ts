@@ -12,6 +12,10 @@ export const buildNoteContentFromEntries = (entries: NoteDailyEntry[]) =>
     .join("\n\n");
 
 export const normalizeDailyEntries = (note: Note) => {
+  if (note.noteMode === "free") {
+    return note.dailyEntries ?? [];
+  }
+
   const entries = note.dailyEntries ?? [];
 
   if (entries.length > 0) {
@@ -36,10 +40,18 @@ export const normalizeDailyEntries = (note: Note) => {
 };
 
 export const normalizeNoteDailyEntries = (note: Note): Note => {
+  if (note.noteMode === "free") {
+    return {
+      ...note,
+      dailyEntries: note.dailyEntries ?? []
+    };
+  }
+
   const dailyEntries = normalizeDailyEntries(note);
 
   return {
     ...note,
+    noteMode: note.noteMode ?? "day",
     dailyEntries,
     content: buildNoteContentFromEntries(dailyEntries)
   };

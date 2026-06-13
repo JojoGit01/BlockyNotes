@@ -12,7 +12,7 @@ import { noteTemplates } from "@/services/notes/noteTemplates";
 import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
 import { getAppPalette } from "@/theme/appPalette";
-import type { Note, NoteDailyEntry, NoteIconKey } from "@/types/models";
+import type { Note, NoteDailyEntry, NoteIconKey, NoteMode } from "@/types/models";
 
 type ViewMode = "day" | "all";
 
@@ -30,6 +30,7 @@ const calendarMonthFormatter = new Intl.DateTimeFormat("fr-FR", {
 type DraftSnapshot = {
   content: string;
   entries: NoteDailyEntry[];
+  noteMode: NoteMode;
   noteId: string | null;
   selectedDateKey: string;
   title: string;
@@ -38,7 +39,7 @@ type DraftSnapshot = {
 const hasMeaningfulDraft = (draft: DraftSnapshot) =>
   draft.title.trim().length > 0 ||
   draft.content.trim().length > 0 ||
-  draft.entries.some((entry) => entry.date !== draft.selectedDateKey && entry.content.trim().length > 0);
+  (draft.noteMode === "day" && draft.entries.some((entry) => entry.date !== draft.selectedDateKey && entry.content.trim().length > 0));
 
 export default function NewNoteScreen() {
   const { folderId: folderIdParam, returnFolderId } = useLocalSearchParams<{
@@ -68,6 +69,7 @@ export default function NewNoteScreen() {
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saving");
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey());
   const [viewMode, setViewMode] = useState<ViewMode>("all");
+  const [noteMode, setNoteMode] = useState<NoteMode>("day");
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -80,6 +82,7 @@ export default function NewNoteScreen() {
   const draftSnapshotRef = useRef<DraftSnapshot>({
     content: "",
     entries: [],
+    noteMode: "day",
     noteId: null,
     selectedDateKey: toDateKey(),
     title: ""
@@ -101,13 +104,14 @@ export default function NewNoteScreen() {
     draftSnapshotRef.current = {
       content: "",
       entries: [],
+      noteMode,
       noteId: null,
       selectedDateKey,
       title: ""
     };
 
     return true;
-  }, [purgeNote, selectedDateKey]);
+  }, [noteMode, purgeNote, selectedDateKey]);
 
   const goBack = async () => {
     await purgeEmptyDraft();
@@ -162,6 +166,7 @@ export default function NewNoteScreen() {
     draftSnapshotRef.current = {
       content,
       entries: latestEntriesRef.current,
+      noteMode,
       noteId,
       selectedDateKey,
       title
@@ -183,6 +188,7 @@ export default function NewNoteScreen() {
     const hasDraftContent = hasMeaningfulDraft({
       content,
       entries: latestEntriesRef.current,
+      noteMode,
       noteId,
       selectedDateKey,
       title
@@ -209,6 +215,51 @@ export default function NewNoteScreen() {
 
     const timeout = setTimeout(async () => {
       setSaveState("saving");
+      if (noteMode === "free") {
+        latestEntriesRef.current = [];
+        setEntries([]);
+
+        if (!noteId) {
+          if (createInFlightRef.current) {
+            return;
+          }
+
+          createInFlightRef.current = true;
+          try {
+            const note = await createNote({
+              title: title.trim(),
+              content,
+              noteMode: "free",
+              dailyEntries: [],
+              iconKey: iconKey === "auto" ? null : iconKey,
+              isFavorite,
+              isPinned,
+              folderId
+            });
+
+            setNoteId(note.id);
+            setSaveState("saved");
+          } finally {
+            createInFlightRef.current = false;
+          }
+          return;
+        }
+
+        await updateNote(noteId, {
+          title: title.trim(),
+          content,
+          noteMode: "free",
+          dailyEntries: [],
+          iconKey: iconKey === "auto" ? null : iconKey,
+          isFavorite,
+          isPinned,
+          folderId
+        });
+
+        setSaveState("saved");
+        return;
+      }
+
       const dailyEntries = upsertDailyEntry(latestEntriesRef.current, selectedDateKey, content);
       latestEntriesRef.current = dailyEntries;
       setEntries(dailyEntries);
@@ -224,6 +275,7 @@ export default function NewNoteScreen() {
           const note = await createNote({
             title: title.trim(),
             content: nextContent,
+            noteMode: "day",
             dailyEntries,
             iconKey: iconKey === "auto" ? null : iconKey,
             isFavorite,
@@ -242,6 +294,7 @@ export default function NewNoteScreen() {
       await updateNote(noteId, {
         title: title.trim(),
         content: nextContent,
+        noteMode: "day",
         dailyEntries,
         iconKey: iconKey === "auto" ? null : iconKey,
         isFavorite,
@@ -253,7 +306,7 @@ export default function NewNoteScreen() {
     }, 350);
 
     return () => clearTimeout(timeout);
-  }, [content, createNote, folderId, iconKey, isFavorite, isPinned, noteId, purgeNote, selectedDateKey, title, updateNote]);
+  }, [content, createNote, folderId, iconKey, isFavorite, isPinned, noteId, noteMode, purgeNote, selectedDateKey, title, updateNote]);
 
   const persistDraftDate = useCallback(
     async (dateKey: string, text: string) => {
@@ -271,6 +324,7 @@ export default function NewNoteScreen() {
       await updateNote(noteId, {
         title: title.trim(),
         content: nextContent,
+        noteMode: "day",
         dailyEntries,
         iconKey: iconKey === "auto" ? null : iconKey,
         isFavorite,
@@ -309,12 +363,67 @@ export default function NewNoteScreen() {
   };
 
   const handleChangeMode = async (mode: ViewMode) => {
+    if (noteMode === "free") {
+      return;
+    }
+
     if (mode === viewMode) {
       return;
     }
 
     await persistDraftDate(selectedDateKey, content);
     setViewMode(mode);
+  };
+
+  const handleChangeNoteMode = async (nextMode: NoteMode) => {
+    if (nextMode === noteMode) {
+      return;
+    }
+
+    if (nextMode === "free") {
+      await persistDraftDate(selectedDateKey, content);
+      const nextContent = buildNoteContentFromEntries(latestEntriesRef.current) || content;
+
+      latestEntriesRef.current = [];
+      setEntries([]);
+      setContent(nextContent);
+      setNoteMode("free");
+
+      if (noteId) {
+        await updateNote(noteId, {
+          title: title.trim(),
+          content: nextContent,
+          noteMode: "free",
+          dailyEntries: [],
+          iconKey: iconKey === "auto" ? null : iconKey,
+          isFavorite,
+          isPinned,
+          folderId
+        });
+      }
+
+      return;
+    }
+
+    const dailyEntries = upsertDailyEntry([], todayKey, content);
+    latestEntriesRef.current = dailyEntries;
+    setEntries(dailyEntries);
+    setSelectedDateKey(todayKey);
+    setViewMode("day");
+    setNoteMode("day");
+
+    if (noteId) {
+      await updateNote(noteId, {
+        title: title.trim(),
+        content: buildNoteContentFromEntries(dailyEntries),
+        noteMode: "day",
+        dailyEntries,
+        iconKey: iconKey === "auto" ? null : iconKey,
+        isFavorite,
+        isPinned,
+        folderId
+      });
+    }
   };
 
   const renderModeButton = (mode: ViewMode, label: string, icon: keyof typeof Ionicons.glyphMap) => {
@@ -489,10 +598,69 @@ export default function NewNoteScreen() {
             ]}
           />
 
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm, paddingTop: 2 }}>
-            {renderModeButton("day", "Voir jour par jour", "calendar-outline")}
-            {renderModeButton("all", "Voir toute la note", "reader-outline")}
-          </View>
+          {noteMode === "day" ? (
+            <View style={{ flexDirection: "row", gap: theme.spacing.sm, paddingTop: 2 }}>
+              {renderModeButton("day", "Voir jour par jour", "calendar-outline")}
+              {renderModeButton("all", "Voir toute la note", "reader-outline")}
+            </View>
+          ) : (
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 15,
+                backgroundColor: palette.surface,
+                borderWidth: 1,
+                borderColor: palette.border,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <Ionicons name="document-text-outline" size={18} color={palette.text} />
+            </View>
+          )}
+        </View>
+
+        <View
+          style={{
+            minHeight: 50,
+            borderRadius: 18,
+            backgroundColor: palette.surfaceMuted,
+            padding: 5,
+            flexDirection: "row",
+            gap: 5
+          }}
+        >
+          {[
+            { mode: "day" as NoteMode, label: "Journal", icon: "today-outline" as keyof typeof Ionicons.glyphMap, color: "#F59E0B", background: "#FFF1DC" },
+            { mode: "free" as NoteMode, label: "Libre", icon: "document-text-outline" as keyof typeof Ionicons.glyphMap, color: "#18A058", background: "#D8FAF1" }
+          ].map((option) => {
+            const isActive = noteMode === option.mode;
+
+            return (
+              <Pressable
+                key={option.mode}
+                onPress={() => void handleChangeNoteMode(option.mode)}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  minHeight: 40,
+                  borderRadius: 14,
+                  backgroundColor: isActive ? option.background : "transparent",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  opacity: pressed ? 0.84 : 1
+                })}
+              >
+                <Ionicons name={option.icon} size={15} color={isActive ? option.color : palette.textMuted} />
+                <Text style={[theme.typography.label, { color: isActive ? option.color : palette.textMuted, fontWeight: "900" }]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <Pressable
@@ -519,22 +687,24 @@ export default function NewNoteScreen() {
         </Pressable>
 
         <View style={{ flexDirection: "row", gap: 8 }}>
-          <Pressable
-            onPress={handleOpenDateModal}
-            style={{
-              minHeight: 42,
-              paddingHorizontal: 14,
-              borderRadius: 14,
-              backgroundColor: "#0F1B3A",
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6
-            }}
-          >
-            <Ionicons name="calendar" size={13} color="#FFFFFF" />
-            <Text style={[theme.typography.label, { color: "#FFFFFF", fontSize: 14 }]}>{selectedDateLabel}</Text>
-          </Pressable>
+          {noteMode === "day" ? (
+            <Pressable
+              onPress={handleOpenDateModal}
+              style={{
+                minHeight: 42,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                backgroundColor: "#0F1B3A",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6
+              }}
+            >
+              <Ionicons name="calendar" size={13} color="#FFFFFF" />
+              <Text style={[theme.typography.label, { color: "#FFFFFF", fontSize: 14 }]}>{selectedDateLabel}</Text>
+            </Pressable>
+          ) : null}
 
           <Pressable
             onPress={() => setShowFolderModal(true)}
@@ -583,7 +753,49 @@ export default function NewNoteScreen() {
           </View>
         </View>
 
-        {viewMode === "day" ? (
+        {noteMode === "free" ? (
+          <View
+            style={{
+              minHeight: 420,
+              borderRadius: 28,
+              backgroundColor: palette.surface,
+              paddingHorizontal: 22,
+              paddingTop: 28,
+              paddingBottom: 20,
+              borderWidth: 1,
+              borderColor: palette.border
+            }}
+          >
+            <Text
+                style={[
+                  theme.typography.caption,
+                { color: palette.textMuted, letterSpacing: 4, textTransform: "uppercase", fontWeight: "900", marginBottom: 20 }
+              ]}
+            >
+              Note libre
+            </Text>
+            <TextInput
+              value={content}
+              onChangeText={setContent}
+              onFocus={() => scrollToEditor(dayEditorYRef.current)}
+              placeholder="Ecris une note sans date..."
+              placeholderTextColor={palette.placeholder}
+              multiline
+              scrollEnabled={false}
+              textAlignVertical="top"
+              style={[
+                theme.typography.body,
+                {
+                  minHeight: 330,
+                  color: palette.text,
+                  fontSize: 17,
+                  lineHeight: 32,
+                  paddingVertical: 0
+                }
+              ]}
+            />
+          </View>
+        ) : viewMode === "day" ? (
           <View
             style={{
               minHeight: 420,

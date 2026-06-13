@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppBackground } from "@/components/ui/AppBackground";
@@ -22,6 +22,14 @@ import type { FolderIconKey, Note } from "@/types/models";
 type FolderModalMode = "options" | "rename" | "icon" | "move" | "archive" | "delete";
 type QuickNoteModalMode = "actions" | "move";
 type BulkActionMode = "move" | "archive" | "delete" | null;
+type FolderContentItem =
+  | { type: "favoritesHeader" }
+  | { type: "favoriteNote"; note: Note }
+  | { type: "favoritesToggle" }
+  | { type: "notesHeader" }
+  | { type: "regularNote"; note: Note }
+  | { type: "emptyFolder" }
+  | { type: "allFavoritesInfo" };
 
 const noteDateLabel = (isoDate: string) =>
   new Date(isoDate).toLocaleDateString("fr-FR", {
@@ -171,6 +179,171 @@ function FolderStatCard({
   );
 }
 
+function FolderFavoriteNoteRow({
+  note,
+  onOpen,
+  onQuickOpen,
+  onToggleSelection,
+  selected,
+  selectionMode
+}: {
+  note: Note;
+  onOpen: () => void;
+  onQuickOpen: () => void;
+  onToggleSelection: () => void;
+  selected: boolean;
+  selectionMode: boolean;
+}) {
+  const theme = useTheme();
+  const palette = getAppPalette(theme);
+  const noteIcon = getNoteIcon(note);
+
+  return (
+    <Pressable
+      onLongPress={() => (selectionMode ? onToggleSelection() : onQuickOpen())}
+      onPress={() => (selectionMode ? onToggleSelection() : onOpen())}
+      style={({ pressed }) => ({
+        minHeight: 60,
+        borderRadius: 20,
+        backgroundColor: selected ? "#E4ECFF" : palette.surface,
+        borderWidth: selected ? 1 : 0,
+        borderColor: "#4F6EF7",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 11,
+        opacity: pressed ? 0.88 : 1,
+        shadowColor: palette.shadow,
+        shadowOpacity: 0.05,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 4
+      })}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 15,
+          backgroundColor: noteIcon.backgroundColor,
+          alignItems: "center",
+          justifyContent: "center"
+        }}
+      >
+        <Ionicons name={noteIcon.icon} size={17} color={noteIcon.color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]} numberOfLines={1}>
+          {note.title || "Sans titre"}
+        </Text>
+        <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
+          {noteDateLabel(note.updatedAt)}
+        </Text>
+      </View>
+      {selectionMode ? (
+        <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={21} color={selected ? "#4F6EF7" : "#A4A7B0"} />
+      ) : (
+        <Ionicons name="star" size={16} color="#F59E0B" />
+      )}
+    </Pressable>
+  );
+}
+
+function FolderRegularNoteRow({
+  locked,
+  meta,
+  note,
+  onOpen,
+  onQuickOpen,
+  onToggleSelection,
+  selected,
+  selectionMode
+}: {
+  locked: boolean;
+  meta: string;
+  note: Note;
+  onOpen: () => void;
+  onQuickOpen: () => void;
+  onToggleSelection: () => void;
+  selected: boolean;
+  selectionMode: boolean;
+}) {
+  const theme = useTheme();
+  const palette = getAppPalette(theme);
+  const noteIcon = getNoteIcon(note);
+
+  return (
+    <Pressable
+      onLongPress={() => (selectionMode ? onToggleSelection() : onQuickOpen())}
+      onPress={() => (selectionMode ? onToggleSelection() : onOpen())}
+      style={({ pressed }) => ({
+        minHeight: 72,
+        borderRadius: 21,
+        backgroundColor: selected ? "#E4ECFF" : palette.surface,
+        borderWidth: selected ? 1 : 0,
+        borderColor: "#4F6EF7",
+        paddingHorizontal: 14,
+        paddingVertical: 11,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        opacity: pressed ? 0.88 : 1,
+        shadowColor: palette.shadow,
+        shadowOpacity: 0.06,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 5
+      })}
+    >
+      <View
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 17,
+          backgroundColor: noteIcon.backgroundColor,
+          alignItems: "center",
+          justifyContent: "center"
+        }}
+      >
+        <Ionicons name={locked ? "lock-closed" : noteIcon.icon} size={21} color={locked ? "#0F1B3A" : noteIcon.color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text
+          style={[theme.typography.h3, { color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "900" }]}
+          numberOfLines={1}
+        >
+          {note.title || "Sans titre"}
+        </Text>
+        <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
+          {meta}
+        </Text>
+      </View>
+      {locked ? (
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: "#E4ECFF",
+            paddingHorizontal: 8,
+            paddingVertical: 5,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4
+          }}
+        >
+          <Ionicons name="shield-checkmark" size={12} color="#4F6EF7" />
+          <Text style={[theme.typography.caption, { color: "#4F6EF7", fontWeight: "900", fontSize: 10 }]}>Secure</Text>
+        </View>
+      ) : null}
+      {selectionMode ? (
+        <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={22} color={selected ? "#4F6EF7" : "#A4A7B0"} />
+      ) : (
+        <Ionicons name="chevron-forward" size={18} color="#A4A7B0" />
+      )}
+    </Pressable>
+  );
+}
+
 export default function FolderDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
@@ -211,9 +384,42 @@ export default function FolderDetailsScreen() {
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [allNotes, id, isPersonalFolder]
   );
-  const favoriteNotes = notes.filter((note) => note.isFavorite);
-  const regularNotes = notes.filter((note) => !note.isFavorite);
-  const visibleFavoriteNotes = showAllFavorites ? favoriteNotes : favoriteNotes.slice(0, 3);
+  const favoriteNotes = useMemo(() => notes.filter((note) => note.isFavorite), [notes]);
+  const regularNotes = useMemo(() => notes.filter((note) => !note.isFavorite), [notes]);
+  const visibleFavoriteNotes = useMemo(
+    () => (showAllFavorites ? favoriteNotes : favoriteNotes.slice(0, 3)),
+    [favoriteNotes, showAllFavorites]
+  );
+  const folderContentItems = useMemo<FolderContentItem[]>(() => {
+    const items: FolderContentItem[] = [];
+
+    if (favoriteNotes.length > 0) {
+      items.push({ type: "favoritesHeader" });
+      visibleFavoriteNotes.forEach((note) => items.push({ type: "favoriteNote", note }));
+
+      if (favoriteNotes.length > 3) {
+        items.push({ type: "favoritesToggle" });
+      }
+    }
+
+    if (notes.length === 0) {
+      items.push({ type: "emptyFolder" });
+      return items;
+    }
+
+    items.push({ type: "notesHeader" });
+
+    if (regularNotes.length > 0) {
+      regularNotes.forEach((note) => items.push({ type: "regularNote", note }));
+      return items;
+    }
+
+    if (favoriteNotes.length > 0) {
+      items.push({ type: "allFavoritesInfo" });
+    }
+
+    return items;
+  }, [favoriteNotes, notes.length, regularNotes, visibleFavoriteNotes]);
   const pinnedNotesCount = notes.filter((note) => note.isPinned).length;
   const selectedBulkNotes = notes.filter((note) => selectedBulkNoteIds.includes(note.id));
   const title = isPersonalFolder ? "Personnel" : folder?.name ?? "";
@@ -551,458 +757,320 @@ export default function FolderDetailsScreen() {
       ]
     : [];
 
+  const openNoteFromFolder = (note: Note) => {
+    router.push({
+      pathname: "/notes/[id]",
+      params: {
+        id: note.id,
+        returnFolderId: isPersonalFolder ? "personal" : id
+      }
+    });
+  };
+
+  const renderFolderContentItem = ({ item }: { item: FolderContentItem }) => {
+    if (item.type === "favoritesHeader") {
+      return (
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 2 }}>
+          <Text style={{ color: palette.text, fontSize: 19, lineHeight: 24, fontWeight: "900" }}>Favoris du dossier</Text>
+          {selectionMode ? (
+            <Pressable onPress={toggleAllBulkNotes} hitSlop={10}>
+              <Text style={[theme.typography.caption, { color: "#4F6EF7", fontWeight: "900" }]}>
+                {selectedBulkNoteIds.length === notes.length ? "Tout retirer" : "Tout choisir"}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    }
+
+    if (item.type === "favoriteNote") {
+      const selected = selectedBulkNoteIds.includes(item.note.id);
+
+      return (
+        <FolderFavoriteNoteRow
+          note={item.note}
+          onOpen={() => openNoteFromFolder(item.note)}
+          onQuickOpen={() => openQuickNoteMenu(item.note)}
+          onToggleSelection={() => toggleBulkNote(item.note.id)}
+          selected={selected}
+          selectionMode={selectionMode}
+        />
+      );
+    }
+
+    if (item.type === "favoritesToggle") {
+      return (
+        <Pressable
+          onPress={() => setShowAllFavorites((current) => !current)}
+          style={({ pressed }) => ({
+            minHeight: 44,
+            borderRadius: 16,
+            backgroundColor: palette.surfaceMuted,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: pressed ? 0.82 : 1
+          })}
+        >
+          <Text style={[theme.typography.label, { color: "#4F6EF7", fontWeight: "900" }]}>
+            {showAllFavorites ? "Reduire les favoris" : `Voir les ${favoriteNotes.length} favoris`}
+          </Text>
+        </Pressable>
+      );
+    }
+
+    if (item.type === "notesHeader") {
+      return (
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: favoriteNotes.length > 0 ? 6 : 0 }}>
+          <Text style={{ color: palette.text, fontSize: 21, lineHeight: 26, fontWeight: "900" }}>Notes du dossier</Text>
+          {selectionMode ? (
+            <Pressable onPress={toggleAllBulkNotes} hitSlop={10}>
+              <Text style={[theme.typography.caption, { color: "#4F6EF7", fontWeight: "900" }]}>
+                {selectedBulkNoteIds.length === notes.length ? "Tout retirer" : "Tout choisir"}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    }
+
+    if (item.type === "regularNote") {
+      const count = noteElementCount(item.note);
+      const locked = isNoteLocked(item.note, folder, settings);
+      const noteMeta = locked ? "Contenu masque - code requis" : `${count} element${count > 1 ? "s" : ""} - ${noteDateLabel(item.note.updatedAt)}`;
+      const selected = selectedBulkNoteIds.includes(item.note.id);
+
+      return (
+        <FolderRegularNoteRow
+          locked={locked}
+          meta={noteMeta}
+          note={item.note}
+          onOpen={() => openNoteFromFolder(item.note)}
+          onQuickOpen={() => openQuickNoteMenu(item.note)}
+          onToggleSelection={() => toggleBulkNote(item.note.id)}
+          selected={selected}
+          selectionMode={selectionMode}
+        />
+      );
+    }
+
+    if (item.type === "emptyFolder") {
+      return (
+        <EmptyState
+          title="Aucune note ici"
+          description="Ajoute une note dans ce dossier pour commencer a l'organiser."
+          icon="create-outline"
+          iconBackgroundColor={palette.surfaceMuted}
+          iconColor="#FF6B7A"
+          actionLabel="Creer une note"
+          onActionPress={goToNewNote}
+        />
+      );
+    }
+
+    return (
+      <View
+        style={{
+          minHeight: 128,
+          borderRadius: 22,
+          backgroundColor: palette.surface,
+          padding: 18,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 14,
+          shadowColor: palette.shadow,
+          shadowOpacity: 0.05,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 4
+        }}
+      >
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 17,
+            backgroundColor: "#FFF1DC",
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+        >
+          <Ionicons name="star" size={22} color="#F59E0B" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "900" }}>
+            Toutes les notes sont en favoris
+          </Text>
+          <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 4, lineHeight: 22 }]}>
+            Elles restent accessibles dans la section favoris juste au-dessus.
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <AppBackground />
-      <ScrollView
+      <FlatList
+        data={folderContentItems}
+        keyExtractor={(item, index) => (item.type === "favoriteNote" || item.type === "regularNote" ? `${item.type}-${item.note.id}` : `${item.type}-${index}`)}
         contentContainerStyle={{
           paddingHorizontal: 14,
           paddingTop: 12,
           paddingBottom: floatingButtonBottom + 82
         }}
-      >
-        <View style={{ gap: 18 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Pressable
-              onPress={goBackToFolders}
-              style={({ pressed }) => ({
-                width: 52,
-                height: 52,
-                borderRadius: 18,
-                backgroundColor: palette.surface,
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: pressed ? 0.82 : 1,
-                shadowColor: palette.shadow,
-                shadowOpacity: 0.05,
-                shadowRadius: 16,
-                shadowOffset: { width: 0, height: 8 },
-                elevation: 5
-              })}
-            >
-              <Ionicons name="arrow-back" size={20} color={palette.text} />
-            </Pressable>
+        initialNumToRender={10}
+        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <View style={{ gap: 18, marginBottom: 14 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Pressable
+                onPress={goBackToFolders}
+                style={({ pressed }) => ({
+                  width: 52,
+                  height: 52,
+                  borderRadius: 18,
+                  backgroundColor: palette.surface,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: pressed ? 0.82 : 1,
+                  shadowColor: palette.shadow,
+                  shadowOpacity: 0.05,
+                  shadowRadius: 16,
+                  shadowOffset: { width: 0, height: 8 },
+                  elevation: 5
+                })}
+              >
+                <Ionicons name="arrow-back" size={20} color={palette.text} />
+              </Pressable>
 
-            <Pressable
-              onPress={openOptions}
-              style={({ pressed }) => ({
-                width: 52,
-                height: 52,
-                borderRadius: 18,
-                backgroundColor: palette.surface,
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: pressed ? 0.82 : 1,
-                shadowColor: palette.shadow,
-                shadowOpacity: 0.05,
-                shadowRadius: 16,
-                shadowOffset: { width: 0, height: 8 },
-                elevation: 5
-              })}
-            >
-              <Ionicons name="ellipsis-horizontal" size={21} color={palette.text} />
-            </Pressable>
-          </View>
+              <Pressable
+                onPress={openOptions}
+                style={({ pressed }) => ({
+                  width: 52,
+                  height: 52,
+                  borderRadius: 18,
+                  backgroundColor: palette.surface,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: pressed ? 0.82 : 1,
+                  shadowColor: palette.shadow,
+                  shadowOpacity: 0.05,
+                  shadowRadius: 16,
+                  shadowOffset: { width: 0, height: 8 },
+                  elevation: 5
+                })}
+              >
+                <Ionicons name="ellipsis-horizontal" size={21} color={palette.text} />
+              </Pressable>
+            </View>
 
-          <View
-            style={{
-              minHeight: 104,
-              borderRadius: 24,
-              backgroundColor: "#0F1B3A",
-              overflow: "hidden",
-              padding: 18,
-              justifyContent: "center",
-              shadowColor: "#0F1B3A",
-              shadowOpacity: 0.2,
-              shadowRadius: 18,
-              shadowOffset: { width: 0, height: 10 },
-              elevation: 8
-            }}
-          >
             <View
               style={{
-                position: "absolute",
-                right: -44,
-                top: -54,
-                width: 168,
-                height: 168,
-                borderRadius: 84,
-                backgroundColor: "rgba(255,255,255,0.12)"
+                minHeight: 104,
+                borderRadius: 24,
+                backgroundColor: "#0F1B3A",
+                overflow: "hidden",
+                padding: 18,
+                justifyContent: "center",
+                shadowColor: "#0F1B3A",
+                shadowOpacity: 0.2,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: 8
               }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                right: 20,
-                bottom: -92,
-                width: 160,
-                height: 160,
-                borderRadius: 80,
-                backgroundColor: "rgba(124,77,255,0.28)"
-              }}
-            />
-
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            >
               <View
                 style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 19,
-                  backgroundColor: heroFolderIcon?.backgroundColor ?? "rgba(255,255,255,0.16)",
-                  alignItems: "center",
-                  justifyContent: "center"
+                  position: "absolute",
+                  right: -44,
+                  top: -54,
+                  width: 168,
+                  height: 168,
+                  borderRadius: 84,
+                  backgroundColor: "rgba(255,255,255,0.12)"
                 }}
-              >
-                <Ionicons
-                  name={isPersonalFolder ? "folder-open-outline" : heroFolderIcon?.icon ?? "folder-open-outline"}
-                  size={25}
-                  color={heroFolderIcon?.color ?? "#FFFFFF"}
-                />
-              </View>
-              <Text style={{ flex: 1, color: "#FFFFFF", fontSize: 28, lineHeight: 34, fontWeight: "900" }} numberOfLines={1}>
-                {title}
-              </Text>
-              {folder?.isLocked ? (
+              />
+              <View
+                style={{
+                  position: "absolute",
+                  right: 20,
+                  bottom: -92,
+                  width: 160,
+                  height: 160,
+                  borderRadius: 80,
+                  backgroundColor: "rgba(124,77,255,0.28)"
+                }}
+              />
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
                 <View
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 13,
-                    backgroundColor: "rgba(255,255,255,0.16)",
+                    width: 56,
+                    height: 56,
+                    borderRadius: 19,
+                    backgroundColor: heroFolderIcon?.backgroundColor ?? "rgba(255,255,255,0.16)",
                     alignItems: "center",
                     justifyContent: "center"
                   }}
                 >
-                  <Ionicons name="lock-closed" size={15} color="#FFFFFF" />
+                  <Ionicons
+                    name={isPersonalFolder ? "folder-open-outline" : heroFolderIcon?.icon ?? "folder-open-outline"}
+                    size={25}
+                    color={heroFolderIcon?.color ?? "#FFFFFF"}
+                  />
                 </View>
-              ) : null}
-            </View>
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <FolderStatCard
-              icon="document-text"
-              iconColor="#4F6EF7"
-              iconBackground="#E4ECFF"
-              title={`${notes.length} note${notes.length > 1 ? "s" : ""}`}
-              subtitle="Actives"
-            />
-            <FolderStatCard
-              icon="star"
-              iconColor="#F59E0B"
-              iconBackground="#FFF1DC"
-              title={`${favoriteNotes.length} favori${favoriteNotes.length > 1 ? "s" : ""}`}
-              subtitle="Dans ce dossier"
-            />
-            <FolderStatCard
-              icon="sparkles"
-              iconColor="#7C4DFF"
-              iconBackground="#F0E6FF"
-              title={`${pinnedNotesCount} epinglee${pinnedNotesCount > 1 ? "s" : ""}`}
-              subtitle="Prioritaires"
-            />
-          </View>
-
-          {favoriteNotes.length > 0 ? (
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <Text style={{ color: palette.text, fontSize: 19, lineHeight: 24, fontWeight: "900" }}>Favoris du dossier</Text>
-                {selectionMode ? (
-                  <Pressable onPress={toggleAllBulkNotes} hitSlop={10}>
-                    <Text style={[theme.typography.caption, { color: "#4F6EF7", fontWeight: "900" }]}>
-                      {selectedBulkNoteIds.length === notes.length ? "Tout retirer" : "Tout choisir"}
-                    </Text>
-                  </Pressable>
+                <Text style={{ flex: 1, color: "#FFFFFF", fontSize: 28, lineHeight: 34, fontWeight: "900" }} numberOfLines={1}>
+                  {title}
+                </Text>
+                {folder?.isLocked ? (
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 13,
+                      backgroundColor: "rgba(255,255,255,0.16)",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                  >
+                    <Ionicons name="lock-closed" size={15} color="#FFFFFF" />
+                  </View>
                 ) : null}
               </View>
-              {visibleFavoriteNotes.map((note) => {
-                const noteIcon = getNoteIcon(note);
-                const selected = selectedBulkNoteIds.includes(note.id);
-
-                return (
-                  <Pressable
-                    key={note.id}
-                    onLongPress={() => (selectionMode ? toggleBulkNote(note.id) : openQuickNoteMenu(note))}
-                    onPress={() => {
-                      if (selectionMode) {
-                        toggleBulkNote(note.id);
-                        return;
-                      }
-
-                      router.push({
-                        pathname: "/notes/[id]",
-                        params: {
-                          id: note.id,
-                          returnFolderId: isPersonalFolder ? "personal" : id
-                        }
-                      });
-                    }}
-                    style={({ pressed }) => ({
-                      minHeight: 60,
-                      borderRadius: 20,
-                      backgroundColor: selected ? "#E4ECFF" : palette.surface,
-                      borderWidth: selected ? 1 : 0,
-                      borderColor: "#4F6EF7",
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 11,
-                      opacity: pressed ? 0.88 : 1,
-                      shadowColor: palette.shadow,
-                      shadowOpacity: 0.05,
-                      shadowRadius: 16,
-                      shadowOffset: { width: 0, height: 8 },
-                      elevation: 4
-                    })}
-                  >
-                    <View
-                      style={{
-                        width: 38,
-                        height: 38,
-                        borderRadius: 15,
-                        backgroundColor: noteIcon.backgroundColor,
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}
-                    >
-                      <Ionicons name={noteIcon.icon} size={17} color={noteIcon.color} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]} numberOfLines={1}>
-                        {note.title || "Sans titre"}
-                      </Text>
-                      <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
-                        {noteDateLabel(note.updatedAt)}
-                      </Text>
-                    </View>
-                    {selectionMode ? (
-                      <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={21} color={selected ? "#4F6EF7" : "#A4A7B0"} />
-                    ) : (
-                      <Ionicons name="star" size={16} color="#F59E0B" />
-                    )}
-                  </Pressable>
-                );
-              })}
-              {favoriteNotes.length > 3 ? (
-                <Pressable
-                  onPress={() => setShowAllFavorites((current) => !current)}
-                  style={({ pressed }) => ({
-                    minHeight: 44,
-                    borderRadius: 16,
-                    backgroundColor: palette.surfaceMuted,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    opacity: pressed ? 0.82 : 1
-                  })}
-                >
-                  <Text style={[theme.typography.label, { color: "#4F6EF7", fontWeight: "900" }]}>
-                    {showAllFavorites ? "Reduire les favoris" : `Voir les ${favoriteNotes.length} favoris`}
-                  </Text>
-                </Pressable>
-              ) : null}
             </View>
-          ) : null}
 
-          {notes.length > 0 ? (
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <Text style={{ color: palette.text, fontSize: 21, lineHeight: 26, fontWeight: "900" }}>Notes du dossier</Text>
-              {selectionMode ? (
-                <Pressable onPress={toggleAllBulkNotes} hitSlop={10}>
-                  <Text style={[theme.typography.caption, { color: "#4F6EF7", fontWeight: "900" }]}>
-                    {selectedBulkNoteIds.length === notes.length ? "Tout retirer" : "Tout choisir"}
-                  </Text>
-                </Pressable>
-              ) : null}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <FolderStatCard
+                icon="document-text"
+                iconColor="#4F6EF7"
+                iconBackground="#E4ECFF"
+                title={`${notes.length} note${notes.length > 1 ? "s" : ""}`}
+                subtitle="Actives"
+              />
+              <FolderStatCard
+                icon="star"
+                iconColor="#F59E0B"
+                iconBackground="#FFF1DC"
+                title={`${favoriteNotes.length} favori${favoriteNotes.length > 1 ? "s" : ""}`}
+                subtitle="Dans ce dossier"
+              />
+              <FolderStatCard
+                icon="sparkles"
+                iconColor="#7C4DFF"
+                iconBackground="#F0E6FF"
+                title={`${pinnedNotesCount} epinglee${pinnedNotesCount > 1 ? "s" : ""}`}
+                subtitle="Prioritaires"
+              />
             </View>
-          ) : null}
-
-          {notes.length === 0 ? (
-            <View
-              style={{
-                minHeight: 240,
-                borderRadius: 24,
-                backgroundColor: palette.surface,
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 26,
-                shadowColor: palette.shadow,
-                shadowOpacity: 0.06,
-                shadowRadius: 20,
-                shadowOffset: { width: 0, height: 12 },
-                elevation: 6
-              }}
-            >
-              <View
-                style={{
-                  width: 62,
-                  height: 62,
-                  borderRadius: 21,
-                  backgroundColor: palette.surfaceMuted,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: 18
-                }}
-              >
-                <Ionicons name="create-outline" size={32} color="#FF6B7A" />
-              </View>
-              <Text style={{ color: palette.text, fontSize: 21, lineHeight: 26, fontWeight: "900", textAlign: "center" }}>
-                Aucune note ici
-              </Text>
-              <Text style={[theme.typography.body, { color: palette.textMuted, textAlign: "center", marginTop: 10, lineHeight: 24 }]}>
-                {"Ajoute une note dans ce dossier pour commencer a l'organiser."}
-              </Text>
-              <Pressable
-                onPress={goToNewNote}
-                style={({ pressed }) => ({
-                  minHeight: 50,
-                  borderRadius: 17,
-                  backgroundColor: "#0F1B3A",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingHorizontal: 18,
-                  marginTop: 20,
-                  opacity: pressed ? 0.86 : 1
-                })}
-              >
-                <Text style={[theme.typography.label, { color: "#FFFFFF", fontWeight: "900" }]}>Creer une note</Text>
-              </Pressable>
-            </View>
-          ) : regularNotes.length > 0 ? (
-            <View style={{ gap: 12 }}>
-              {regularNotes.map((note) => {
-                const noteIcon = getNoteIcon(note);
-                const count = noteElementCount(note);
-                const locked = isNoteLocked(note, folder, settings);
-                const noteMeta = locked ? "Contenu masque - code requis" : `${count} element${count > 1 ? "s" : ""} - ${noteDateLabel(note.updatedAt)}`;
-                const selected = selectedBulkNoteIds.includes(note.id);
-
-                return (
-                  <Pressable
-                    key={note.id}
-                    onLongPress={() => (selectionMode ? toggleBulkNote(note.id) : openQuickNoteMenu(note))}
-                    onPress={() => {
-                      if (selectionMode) {
-                        toggleBulkNote(note.id);
-                        return;
-                      }
-
-                      router.push({
-                        pathname: "/notes/[id]",
-                        params: {
-                          id: note.id,
-                          returnFolderId: isPersonalFolder ? "personal" : id
-                        }
-                      });
-                    }}
-                    style={({ pressed }) => ({
-                      minHeight: 72,
-                      borderRadius: 21,
-                      backgroundColor: selected ? "#E4ECFF" : palette.surface,
-                      borderWidth: selected ? 1 : 0,
-                      borderColor: "#4F6EF7",
-                      paddingHorizontal: 14,
-                      paddingVertical: 11,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                      opacity: pressed ? 0.88 : 1,
-                      shadowColor: palette.shadow,
-                      shadowOpacity: 0.06,
-                      shadowRadius: 18,
-                      shadowOffset: { width: 0, height: 10 },
-                      elevation: 5
-                    })}
-                  >
-                    <View
-                      style={{
-                        width: 46,
-                        height: 46,
-                        borderRadius: 17,
-                        backgroundColor: noteIcon.backgroundColor,
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}
-                    >
-                      <Ionicons name={locked ? "lock-closed" : noteIcon.icon} size={21} color={locked ? "#0F1B3A" : noteIcon.color} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[theme.typography.h3, { color: palette.text, fontSize: 16, lineHeight: 21, fontWeight: "900" }]}
-                        numberOfLines={1}
-                      >
-                        {note.title || "Sans titre"}
-                      </Text>
-                      <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
-                        {noteMeta}
-                      </Text>
-                    </View>
-                    {locked ? (
-                      <View
-                        style={{
-                          borderRadius: 12,
-                          backgroundColor: "#E4ECFF",
-                          paddingHorizontal: 8,
-                          paddingVertical: 5,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4
-                        }}
-                      >
-                        <Ionicons name="shield-checkmark" size={12} color="#4F6EF7" />
-                        <Text style={[theme.typography.caption, { color: "#4F6EF7", fontWeight: "900", fontSize: 10 }]}>Secure</Text>
-                      </View>
-                    ) : null}
-                    {selectionMode ? (
-                      <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={22} color={selected ? "#4F6EF7" : "#A4A7B0"} />
-                    ) : (
-                      <Ionicons name="chevron-forward" size={18} color="#A4A7B0" />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : favoriteNotes.length > 0 ? (
-            <View
-              style={{
-                minHeight: 128,
-                borderRadius: 22,
-                backgroundColor: palette.surface,
-                padding: 18,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 14,
-                shadowColor: palette.shadow,
-                shadowOpacity: 0.05,
-                shadowRadius: 16,
-                shadowOffset: { width: 0, height: 8 },
-                elevation: 4
-              }}
-            >
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 17,
-                  backgroundColor: "#FFF1DC",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
-              >
-                <Ionicons name="star" size={22} color="#F59E0B" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: palette.text, fontSize: 18, lineHeight: 23, fontWeight: "900" }}>
-                  Toutes les notes sont en favoris
-                </Text>
-                <Text style={[theme.typography.body, { color: palette.textMuted, marginTop: 4, lineHeight: 22 }]}>
-                  Elles restent accessibles dans la section favoris juste au-dessus.
-                </Text>
-              </View>
-            </View>
-          ) : null}
-        </View>
-      </ScrollView>
+          </View>
+        }
+        maxToRenderPerBatch={10}
+        removeClippedSubviews
+        renderItem={renderFolderContentItem}
+        windowSize={7}
+      />
 
       {selectionMode ? (
         <View

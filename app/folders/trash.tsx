@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { FlatList, Modal, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CollectionNoteCard } from "@/components/ui/CollectionNoteCard";
@@ -63,8 +63,8 @@ export default function FolderTrashScreen() {
   };
 
   return (
-    <ScreenContainer scrollable>
-      <View style={{ gap: theme.spacing.lg, paddingBottom: 120 }}>
+    <ScreenContainer>
+      <View style={{ flex: 1, gap: theme.spacing.lg }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md, flex: 1 }}>
             <Pressable
@@ -172,16 +172,26 @@ export default function FolderTrashScreen() {
           </View>
         </View>
 
-        <View style={{ gap: theme.spacing.md }}>
-          {deletedNotes.length === 0 ? (
+        <FlatList
+          data={deletedNotes}
+          keyExtractor={(note) => note.id}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 120 }}
+          initialNumToRender={8}
+          ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={
             <EmptyState
               title="Corbeille vide"
               description="Les notes supprimees apparaitront ici avant suppression definitive."
+              icon="trash-outline"
+              iconBackgroundColor="#FFE6E6"
+              iconColor="#FF3434"
             />
-          ) : (
-            deletedNotes.map((note) => (
+          }
+          maxToRenderPerBatch={8}
+          removeClippedSubviews
+          renderItem={({ item: note }) => (
               <CollectionNoteCard
-                key={note.id}
                 note={note}
                 meta={`Supprimee ${dayLabel(note.deletedAt ?? note.updatedAt)}`}
                 disabledOpen
@@ -195,9 +205,9 @@ export default function FolderTrashScreen() {
                   }
                 ]}
               />
-            ))
           )}
-        </View>
+          windowSize={7}
+        />
       </View>
       <Modal visible={confirmAction !== null} transparent animationType="slide" onRequestClose={() => setConfirmAction(null)}>
         <Pressable

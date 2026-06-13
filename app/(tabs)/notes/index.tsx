@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, ScrollView, SectionList, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppBackground } from "@/components/ui/AppBackground";
@@ -36,6 +36,7 @@ type NoteActionModalState =
   | { type: "purge-trash"; noteId: string; title: string }
   | null;
 type QuickNoteModalMode = "actions" | "move";
+type NotesGroup = { key: string; label: string; data: Note[]; sortTime: number };
 
 const navy = "#0F1B3A";
 
@@ -137,45 +138,67 @@ function NoteChip({ label, icon }: { label: string; icon?: keyof typeof Ionicons
   const theme = useTheme();
   const palette = getAppPalette(theme);
   const secure = label === "Securisee";
+  const mode = label === "Libre" || label === "Journal";
 
   return (
     <View
       style={{
         borderRadius: 10,
         backgroundColor: secure ? "#E4ECFF" : palette.surfaceMuted,
-        paddingHorizontal: 7,
+        paddingHorizontal: mode ? 6 : 7,
         paddingVertical: 4,
         flexDirection: "row",
         alignItems: "center",
         gap: 4
       }}
     >
-      {icon ? <Ionicons name={icon} size={10} color={secure ? "#4F6EF7" : palette.textMuted} /> : null}
-      <Text style={[theme.typography.caption, { color: secure ? "#4F6EF7" : palette.textMuted, fontWeight: "900", fontSize: 10 }]} numberOfLines={1}>
-        {label}
-      </Text>
+      {icon ? <Ionicons name={icon} size={mode ? 12 : 10} color={secure ? "#4F6EF7" : palette.textMuted} /> : null}
+      {mode ? null : (
+        <Text
+          style={[
+            theme.typography.caption,
+            { color: secure ? "#4F6EF7" : palette.textMuted, fontWeight: "900", fontSize: 10 }
+          ]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      )}
     </View>
   );
 }
 
-function NotesListItem({ actions = [], note, onLongPress }: { actions?: NoteListAction[]; note: Note; onLongPress?: () => void }) {
+function NotesListItem({
+  actions = [],
+  folderName,
+  locked,
+  note,
+  onLongPress
+}: {
+  actions?: NoteListAction[];
+  folderName: string | null;
+  locked: boolean;
+  note: Note;
+  onLongPress?: () => void;
+}) {
   const theme = useTheme();
   const palette = getAppPalette(theme);
-  const folder = useFoldersStore((state) => state.folders.find((entry) => entry.id === note.folderId));
-  const settings = useSettingsStore((state) => state.settings);
   const noteIcon = getNoteIcon(note);
-  const locked = isNoteLocked(note, folder, settings);
   const elementCount = noteElementCount(note);
   const contentPreview = note.content.trim().split(/\r?\n/).find(Boolean);
+  const noteMode = note.noteMode ?? "day";
   const subtitle = locked
     ? "Contenu masque - code requis"
+    : noteMode === "free" && contentPreview
+      ? contentPreview
     : elementCount > 1
       ? `${elementCount} elements - ${noteDateLabel(note.updatedAt)}`
       : contentPreview
         ? contentPreview
         : noteDateLabel(note.updatedAt);
   const chips = [
-    folder?.name ?? (note.folderId === null ? "Personnel" : null),
+    noteMode === "free" ? "Libre" : "Journal",
+    folderName,
     locked ? "Securisee" : null,
     note.isFavorite ? "Favori" : null,
     note.isPinned ? "Epinglee" : null,
@@ -235,7 +258,11 @@ function NotesListItem({ actions = [], note, onLongPress }: { actions?: NoteList
                         ? "star"
                         : chip === "Epinglee"
                           ? "sparkles"
-                      : chip === "Securisee"
+                          : chip === "Libre"
+                            ? "document-text"
+                            : chip === "Journal"
+                              ? "today"
+                              : chip === "Securisee"
                             ? "lock-closed"
                             : chip === "Archivee"
                               ? "archive"
@@ -295,7 +322,8 @@ export default function NotesScreen() {
   const insets = useSafeAreaInsets();
   const folders = useFoldersStore((state) => state.folders);
   const notes = useNotesStore((state) => state.notes);
-  const sortOrder = useSettingsStore((state) => state.settings.sortOrder);
+  const settings = useSettingsStore((state) => state.settings);
+  const sortOrder = settings.sortOrder;
   const updateSortOrder = useSettingsStore((state) => state.updateSortOrder);
   const searchQuery = useUIStore((state) => state.searchQuery);
   const selectedFolderId = useUIStore((state) => state.selectedFolderId);
@@ -317,6 +345,7 @@ export default function NotesScreen() {
   const [quickNoteMode, setQuickNoteMode] = useState<QuickNoteModalMode>("actions");
   const [activeTab, setActiveTab] = useState<NotesTab>("all");
   const [activeTimeline, setActiveTimeline] = useState<NotesTimeline>("day");
+  const foldersById = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const filteredNotes = useMemo(() => {
     const visibleNotes = notes.filter((note) => {
       if (selectedFolderId && note.folderId !== selectedFolderId) {
@@ -355,21 +384,21 @@ export default function NotesScreen() {
     });
   }, [activeTab, notes, searchQuery, selectedFolderId, sortOrder]);
   const groupedNotes = useMemo(() => {
-    const groups: { key: string; label: string; notes: Note[]; sortTime: number }[] = [];
+    const groups: NotesGroup[] = [];
 
     filteredNotes.forEach((note) => {
       const key = getTimelineGroupKey(note.updatedAt, activeTimeline);
       const existingGroup = groups.find((group) => group.key === key);
 
       if (existingGroup) {
-        existingGroup.notes.push(note);
+        existingGroup.data.push(note);
         return;
       }
 
       groups.push({
         key,
         label: getTimelineGroupLabel(note.updatedAt, activeTimeline),
-        notes: [note],
+        data: [note],
         sortTime: new Date(key).getTime()
       });
     });
@@ -650,8 +679,19 @@ export default function NotesScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <AppBackground />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: floatingButtonBottom + 82 }}>
-        <View style={{ gap: 12 }}>
+      <SectionList
+        sections={groupedNotes}
+        keyExtractor={(item) => item.id}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        removeClippedSubviews
+        scrollEventThrottle={16}
+        stickySectionHeadersEnabled={false}
+        windowSize={7}
+        contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: floatingButtonBottom + 82 }}
+        ListHeaderComponent={
+          <View style={{ gap: 12, marginBottom: groupedNotes.length > 0 ? 10 : 0 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
             <View style={{ flex: 1, marginLeft: 4 }}>
               <Text
@@ -768,58 +808,64 @@ export default function NotesScreen() {
             {filteredNotes.length} note{filteredNotes.length > 1 ? "s" : ""} trouvee{filteredNotes.length > 1 ? "s" : ""}
           </Text>
 
-          <View style={{ gap: 10 }}>
-            {filteredNotes.length === 0 ? (
-              <EmptyState
-                title="Aucune note"
-                description={
-                  activeTab === "favorites"
-                    ? "Ajoute des favoris pour les retrouver ici."
-                    : activeTab === "archived"
-                      ? "Archive une note depuis l'editeur pour la retrouver ici."
-                      : activeTab === "deleted"
-                        ? "Les notes supprimees apparaitront ici avant suppression definitive."
-                        : "Cree une note pour commencer."
-                }
-              />
-            ) : (
-              groupedNotes.map((group) => {
-                const activeTimelineMode = timelineModes.find((mode) => mode.key === activeTimeline) ?? timelineModes[0];
-
-                return (
-                  <View key={group.key} style={{ gap: 9 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4, marginTop: 2 }}>
-                      <View
-                        style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: 11,
-                          backgroundColor: activeTimelineMode.background,
-                          alignItems: "center",
-                          justifyContent: "center"
-                        }}
-                      >
-                        <Ionicons name={activeTimelineMode.icon} size={14} color={activeTimelineMode.color} />
-                      </View>
-                      <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900", flex: 1 }]}>
-                        {group.label}
-                      </Text>
-                      <Text style={[theme.typography.caption, { color: palette.textMuted, fontWeight: "900" }]}>
-                        {group.notes.length}
-                      </Text>
-                    </View>
-                    <View style={{ gap: 10 }}>
-                      {group.notes.map((note) => (
-                        <NotesListItem key={note.id} actions={getNoteListActions(note)} note={note} onLongPress={() => openQuickNoteMenu(note)} />
-                      ))}
-                    </View>
-                  </View>
-                );
-              })
-            )}
           </View>
-        </View>
-      </ScrollView>
+        }
+        ListEmptyComponent={
+          <EmptyState
+            title="Aucune note"
+            description={
+              activeTab === "favorites"
+                ? "Ajoute des favoris pour les retrouver ici."
+                : activeTab === "archived"
+                  ? "Archive une note depuis l'editeur pour la retrouver ici."
+                  : activeTab === "deleted"
+                    ? "Les notes supprimees apparaitront ici avant suppression definitive."
+                    : "Cree une note pour commencer."
+            }
+          />
+        }
+        renderSectionHeader={({ section }) => {
+          const activeTimelineMode = timelineModes.find((mode) => mode.key === activeTimeline) ?? timelineModes[0];
+
+          return (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4, marginTop: 2, marginBottom: 9 }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 11,
+                  backgroundColor: activeTimelineMode.background,
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                <Ionicons name={activeTimelineMode.icon} size={14} color={activeTimelineMode.color} />
+              </View>
+              <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900", flex: 1 }]}>
+                {section.label}
+              </Text>
+              <Text style={[theme.typography.caption, { color: palette.textMuted, fontWeight: "900" }]}>
+                {section.data.length}
+              </Text>
+            </View>
+          );
+        }}
+        renderItem={({ item }) => {
+          const folder = item.folderId ? foldersById.get(item.folderId) : undefined;
+
+          return (
+            <View style={{ marginBottom: 10 }}>
+              <NotesListItem
+                actions={getNoteListActions(item)}
+                folderName={folder?.name ?? (item.folderId === null ? "Personnel" : null)}
+                locked={isNoteLocked(item, folder, settings)}
+                note={item}
+                onLongPress={() => openQuickNoteMenu(item)}
+              />
+            </View>
+          );
+        }}
+      />
 
       <Modal visible={showFilters} transparent animationType="slide" onRequestClose={() => setShowFilters(false)}>
         <Pressable

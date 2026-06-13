@@ -22,6 +22,8 @@ export type NoteIconKey =
   | "music"
   | "home";
 
+export type NoteMode = "day" | "free";
+
 export type FolderIconKey =
   | "briefcase"
   | "brain"
@@ -36,6 +38,7 @@ export interface Note {
   id: string;
   title: string;
   content: string;
+  noteMode?: NoteMode;
   dailyEntries?: NoteDailyEntry[];
   iconKey?: NoteIconKey | null;
   folderId: string | null;

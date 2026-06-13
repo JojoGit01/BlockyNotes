@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { FlatList, Modal, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CollectionNoteCard } from "@/components/ui/CollectionNoteCard";
@@ -43,8 +43,8 @@ export default function FolderArchivesScreen() {
   };
 
   return (
-    <ScreenContainer scrollable>
-      <View style={{ gap: theme.spacing.lg, paddingBottom: 120 }}>
+    <ScreenContainer>
+      <View style={{ flex: 1, gap: theme.spacing.lg }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md, flex: 1 }}>
             <Pressable
@@ -144,16 +144,28 @@ export default function FolderArchivesScreen() {
           </View>
         </View>
 
-        <View style={{ gap: theme.spacing.md }}>
-          {archivedNotes.length === 0 ? (
+        <FlatList
+          data={archivedNotes}
+          keyExtractor={(note) => note.id}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 120 }}
+          initialNumToRender={8}
+          ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={
             <EmptyState
               title="Aucune archive"
               description="Archive une note depuis l'editeur pour la retrouver ici."
+              icon="archive-outline"
+              iconBackgroundColor="#E9ECF3"
+              iconColor="#0F1B3A"
+              actionLabel="Voir les notes"
+              onActionPress={() => router.push("/notes")}
             />
-          ) : (
-            archivedNotes.map((note) => (
+          }
+          maxToRenderPerBatch={8}
+          removeClippedSubviews
+          renderItem={({ item: note }) => (
               <CollectionNoteCard
-                key={note.id}
                 note={note}
                 meta={`Archivee en ${monthLabel(note.updatedAt)}`}
                 actions={[
@@ -171,9 +183,9 @@ export default function FolderArchivesScreen() {
                   }
                 ]}
               />
-            ))
           )}
-        </View>
+          windowSize={7}
+        />
       </View>
       <Modal visible={confirmAction !== null} transparent animationType="slide" onRequestClose={() => setConfirmAction(null)}>
         <Pressable

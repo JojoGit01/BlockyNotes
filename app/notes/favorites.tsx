@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 
 import { CollectionNoteCard } from "@/components/ui/CollectionNoteCard";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -23,8 +23,8 @@ export default function FavoritesScreen() {
   );
 
   return (
-    <ScreenContainer scrollable>
-      <View style={{ gap: theme.spacing.lg, paddingBottom: 40 }}>
+    <ScreenContainer>
+      <View style={{ flex: 1, gap: theme.spacing.lg }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: theme.spacing.md, flex: 1 }}>
             <Pressable
@@ -78,22 +78,29 @@ export default function FavoritesScreen() {
           </View>
         </View>
 
-        <View style={{ gap: theme.spacing.md }}>
-          {favoriteNotes.length === 0 ? (
+        <FlatList
+          data={favoriteNotes}
+          keyExtractor={(note) => note.id}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+          initialNumToRender={8}
+          ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={
             <EmptyState
               title="Aucun favori"
               description="Ajoute une note en favori depuis l'editeur pour la retrouver ici."
+              icon="star"
+              iconBackgroundColor="#FFF1DC"
+              iconColor="#F97316"
+              actionLabel="Voir les notes"
+              onActionPress={() => router.push("/notes")}
             />
-          ) : (
-            favoriteNotes.map((note) => (
-              <CollectionNoteCard
-                key={note.id}
-                note={note}
-                meta="Favori"
-              />
-            ))
-          )}
-        </View>
+          }
+          maxToRenderPerBatch={8}
+          removeClippedSubviews
+          renderItem={({ item }) => <CollectionNoteCard note={item} meta="Favori" />}
+          windowSize={7}
+        />
       </View>
     </ScreenContainer>
   );

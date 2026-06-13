@@ -30,7 +30,7 @@ import { useNotesStore } from "@/store/useNotesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { hashLockCode, verifyLockCode } from "@/lib/security";
 import { getAppPalette } from "@/theme/appPalette";
-import type { NoteIconKey } from "@/types/models";
+import type { NoteIconKey, NoteMode } from "@/types/models";
 import { getNoteLockHash, isNoteLocked } from "@/services/security/locks";
 
 type ViewMode = "day" | "all";
@@ -40,6 +40,7 @@ const DAY_EDITOR_MAX_HEIGHT = 520;
 const ALL_TODAY_EDITOR_MAX_HEIGHT = 380;
 const ALL_ENTRY_MIN_HEIGHT = 96;
 const ALL_ENTRY_MAX_HEIGHT = 320;
+const FREE_EDITOR_MIN_HEIGHT = 420;
 const EDITOR_SELECTION_COLOR = "#7C4DFF";
 const dayLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 const entryDateFormatter = new Intl.DateTimeFormat("fr-FR", {
@@ -128,6 +129,7 @@ export default function EditNoteScreen() {
   const togglePinned = useNotesStore((state) => state.togglePinned);
   const [title, setTitle] = useState(note?.title ?? "");
   const [dayContent, setDayContent] = useState("");
+  const [freeContent, setFreeContent] = useState(note?.content ?? "");
   const [folderId, setFolderId] = useState<string | null>(note?.folderId ?? null);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
   const [showActions, setShowActions] = useState(false);
@@ -141,6 +143,7 @@ export default function EditNoteScreen() {
   const [noteLockModalMode, setNoteLockModalMode] = useState<"create" | "unlock-remove" | null>(null);
   const [noteLockError, setNoteLockError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("all");
+  const [noteMode, setNoteMode] = useState<NoteMode>(note?.noteMode ?? "day");
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey());
   const [allJumpDateKey, setAllJumpDateKey] = useState(toDateKey());
   const [editorContentHeights, setEditorContentHeights] = useState<Record<string, number>>({});
@@ -158,6 +161,8 @@ export default function EditNoteScreen() {
   const latestDraftRef = useRef({
     dateKey: selectedDateKey,
     content: dayContent,
+    freeContent,
+    noteMode,
     title,
     folderId
   });
@@ -229,10 +234,12 @@ export default function EditNoteScreen() {
     latestDraftRef.current = {
       dateKey: selectedDateKey,
       content: dayContent,
+      freeContent,
+      noteMode,
       title,
       folderId
     };
-  }, [dayContent, folderId, selectedDateKey, title]);
+  }, [dayContent, folderId, freeContent, noteMode, selectedDateKey, title]);
 
   useEffect(() => {
     setNoteUnlocked(false);
@@ -251,13 +258,16 @@ export default function EditNoteScreen() {
     }
 
     const dailyEntries = normalizeDailyEntries(latestNote);
+    const latestNoteMode = latestNote.noteMode ?? "day";
 
     setTitle(latestNote.title ?? "");
     setFolderId(latestNote.folderId ?? null);
+    setNoteMode(latestNoteMode);
     setSelectedDateKey(todayKey);
     setAllJumpDateKey(todayKey);
     setCalendarMonth(new Date(fromDateKey(todayKey).getFullYear(), fromDateKey(todayKey).getMonth(), 1));
     setDayContent(dailyEntries.find((entry) => entry.date === todayKey)?.content ?? "");
+    setFreeContent(latestNoteMode === "free" ? latestNote.content : buildNoteContentFromEntries(dailyEntries));
     setSaveState("saved");
     isFirstSync.current = true;
   }, [noteId, todayKey]);
@@ -278,8 +288,26 @@ export default function EditNoteScreen() {
       await updateNote(noteId, {
         title: nextTitle.trim(),
         folderId: nextFolderId,
+        noteMode: "day",
         dailyEntries,
         content: buildNoteContentFromEntries(dailyEntries)
+      });
+    },
+    [noteId, updateNote]
+  );
+
+  const persistFreeNoteChanges = useCallback(
+    async (content: string, nextTitle: string, nextFolderId: string | null) => {
+      if (!noteId) {
+        return;
+      }
+
+      await updateNote(noteId, {
+        title: nextTitle.trim(),
+        folderId: nextFolderId,
+        noteMode: "free",
+        dailyEntries: [],
+        content
       });
     },
     [noteId, updateNote]
@@ -306,6 +334,7 @@ export default function EditNoteScreen() {
       await updateNote(noteId, {
         title: nextTitle.trim(),
         folderId: nextFolderId,
+        noteMode: "day",
         dailyEntries,
         content: buildNoteContentFromEntries(dailyEntries)
       });
@@ -327,6 +356,14 @@ export default function EditNoteScreen() {
 
     allEntrySaveTimeoutsRef.current = {};
     setSaveState("saving");
+
+    if (latestDraft.noteMode === "free") {
+      await persistFreeNoteChanges(latestDraft.freeContent, latestDraft.title, latestDraft.folderId);
+      allEntryDraftsRef.current = {};
+      setSaveState("saved");
+      return;
+    }
+
     await persistEntryChanges(
       {
         [latestDraft.dateKey]: latestDraft.content,
@@ -337,7 +374,7 @@ export default function EditNoteScreen() {
     );
     allEntryDraftsRef.current = {};
     setSaveState("saved");
-  }, [noteId, persistEntryChanges]);
+  }, [noteId, persistEntryChanges, persistFreeNoteChanges]);
 
   const handleBack = useCallback(async () => {
     await flushPendingSave();
@@ -359,6 +396,18 @@ export default function EditNoteScreen() {
       return;
     }
 
+    if (noteMode === "free") {
+      setSaveState("dirty");
+
+      const timeout = setTimeout(async () => {
+        setSaveState("saving");
+        await persistFreeNoteChanges(freeContent, title, folderId);
+        setSaveState("saved");
+      }, 450);
+
+      return () => clearTimeout(timeout);
+    }
+
     setSaveState("dirty");
 
     const timeout = setTimeout(async () => {
@@ -368,7 +417,7 @@ export default function EditNoteScreen() {
     }, 450);
 
     return () => clearTimeout(timeout);
-  }, [dayContent, folderId, noteId, persistNoteChanges, selectedDateKey, title]);
+  }, [dayContent, folderId, freeContent, noteId, noteMode, persistFreeNoteChanges, persistNoteChanges, selectedDateKey, title]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -486,7 +535,61 @@ export default function EditNoteScreen() {
     setNoteLockModalMode("create");
   };
 
+  const handleChangeNoteMode = async (nextMode: NoteMode) => {
+    if (nextMode === noteMode || !noteId) {
+      setShowActions(false);
+      return;
+    }
+
+    setSaveState("saving");
+
+    if (nextMode === "free") {
+      const latestNote = useNotesStore.getState().notes.find((entry) => entry.id === noteId) ?? note;
+      const latestEntries = latestNote ? normalizeDailyEntries(latestNote) : entries;
+      const nextContent = buildNoteContentFromEntries(
+        upsertDailyEntry(latestEntries, selectedDateKey, dayContent)
+      );
+
+      await updateNote(noteId, {
+        title: title.trim(),
+        folderId,
+        noteMode: "free",
+        dailyEntries: [],
+        content: nextContent
+      });
+
+      setFreeContent(nextContent);
+      setNoteMode("free");
+      setSaveState("saved");
+      setShowActions(false);
+      return;
+    }
+
+    const dailyEntries = upsertDailyEntry([], todayKey, freeContent);
+
+    await updateNote(noteId, {
+      title: title.trim(),
+      folderId,
+      noteMode: "day",
+      dailyEntries,
+      content: buildNoteContentFromEntries(dailyEntries)
+    });
+
+    isFirstSync.current = true;
+    setSelectedDateKey(todayKey);
+    setAllJumpDateKey(todayKey);
+    setDayContent(freeContent);
+    setNoteMode("day");
+    setViewMode("day");
+    setSaveState("saved");
+    setShowActions(false);
+  };
+
   const handleChangeMode = async (mode: ViewMode) => {
+    if (noteMode === "free") {
+      return;
+    }
+
     if (mode === viewMode) {
       return;
     }
@@ -511,7 +614,7 @@ export default function EditNoteScreen() {
   };
 
   const handleScreenScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const nextVisible = viewMode === "all" && event.nativeEvent.contentOffset.y > 360;
+    const nextVisible = (viewMode === "all" || noteMode === "free") && event.nativeEvent.contentOffset.y > 360;
     setShowScrollTop((current) => (current === nextVisible ? current : nextVisible));
   };
 
@@ -538,8 +641,6 @@ export default function EditNoteScreen() {
 
   const getEditorHeight = (editorKey: string, minHeight: number, maxHeight: number) =>
     Math.min(Math.max(editorContentHeights[editorKey] ?? minHeight, minHeight), maxHeight);
-
-  const canScrollEditor = (editorKey: string, maxHeight: number) => (editorContentHeights[editorKey] ?? 0) > maxHeight;
 
   const handleGlobalEntryChange = (dateKey: string, nextContent: string) => {
     allEntryDraftsRef.current = {
@@ -759,13 +860,122 @@ export default function EditNoteScreen() {
             ]}
           />
 
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm, paddingTop: 2 }}>
-            {renderModeButton("day", "Voir jour par jour", "calendar-outline")}
-            {renderModeButton("all", "Voir toute la note", "reader-outline")}
-          </View>
+          {noteMode === "day" ? (
+            <View style={{ flexDirection: "row", gap: theme.spacing.sm, paddingTop: 2 }}>
+              {renderModeButton("day", "Voir jour par jour", "calendar-outline")}
+              {renderModeButton("all", "Voir toute la note", "reader-outline")}
+            </View>
+          ) : (
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 15,
+                backgroundColor: palette.surface,
+                borderWidth: 1,
+                borderColor: palette.border,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <Ionicons name="document-text-outline" size={18} color={palette.text} />
+            </View>
+          )}
         </View>
 
-        {viewMode === "day" ? (
+        {noteMode === "free" ? (
+          <View style={{ gap: 18 }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable
+                onPress={() => setShowFolderModal(true)}
+                style={({ pressed }) => ({
+                  minHeight: 42,
+                  maxWidth: 150,
+                  paddingHorizontal: 14,
+                  borderRadius: 14,
+                  backgroundColor: palette.surface,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  opacity: pressed ? 0.82 : 1
+                })}
+              >
+                <Ionicons name="folder-outline" size={13} color={palette.text} />
+                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
+                  {activeFolderLabel}
+                </Text>
+              </Pressable>
+
+              <View
+                accessibilityLabel={saveStatus.label}
+                style={{
+                  minHeight: 42,
+                  paddingHorizontal: 12,
+                  borderRadius: 14,
+                  backgroundColor: palette.surface,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6
+                }}
+              >
+                <Ionicons name="cloud" size={14} color={palette.text} />
+                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
+                  {saveState === "saving" ? "Sync..." : "Autosave"}
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                minHeight: FREE_EDITOR_MIN_HEIGHT,
+                borderRadius: 28,
+                backgroundColor: palette.surface,
+                paddingHorizontal: 22,
+                paddingTop: 22,
+                paddingBottom: 20,
+                borderWidth: 1,
+                borderColor: palette.border
+              }}
+            >
+              <Text
+                style={[
+                  theme.typography.caption,
+                  { color: palette.textMuted, letterSpacing: 4, textTransform: "uppercase", marginBottom: 14, fontWeight: "900" }
+                ]}
+              >
+                Note libre
+              </Text>
+              <TextInput
+                value={freeContent}
+                onChangeText={setFreeContent}
+                placeholder="Ecris une note sans date..."
+                placeholderTextColor={palette.placeholder}
+                multiline
+                scrollEnabled={false}
+                selectionColor={EDITOR_SELECTION_COLOR}
+                cursorColor={EDITOR_SELECTION_COLOR}
+                textAlignVertical="top"
+                style={[
+                  theme.typography.body,
+                  {
+                    minHeight: FREE_EDITOR_MIN_HEIGHT - 98,
+                    color: palette.text,
+                    fontSize: 17,
+                    lineHeight: 32,
+                    paddingVertical: 0
+                  }
+                ]}
+              />
+            </View>
+          </View>
+        ) : viewMode === "day" ? (
           <View style={{ gap: 18 }}>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable
@@ -869,14 +1079,14 @@ export default function EditNoteScreen() {
                 }
                 placeholderTextColor={palette.placeholder}
                 multiline
-                scrollEnabled={canScrollEditor(`day:${selectedDateKey}`, DAY_EDITOR_MAX_HEIGHT)}
+                scrollEnabled={false}
                 selectionColor={EDITOR_SELECTION_COLOR}
                 cursorColor={EDITOR_SELECTION_COLOR}
                 textAlignVertical="top"
                 style={[
                   theme.typography.body,
                   {
-                    height: getEditorHeight(`day:${selectedDateKey}`, DAY_EDITOR_MIN_HEIGHT, DAY_EDITOR_MAX_HEIGHT),
+                    minHeight: Math.max(getEditorHeight(`day:${selectedDateKey}`, DAY_EDITOR_MIN_HEIGHT, DAY_EDITOR_MAX_HEIGHT), DAY_EDITOR_MIN_HEIGHT),
                     color: palette.text,
                     fontSize: 17,
                     lineHeight: 32,
@@ -1002,14 +1212,14 @@ export default function EditNoteScreen() {
                 placeholder="Ecris quelque chose pour aujourd'hui..."
                 placeholderTextColor={palette.placeholder}
                 multiline
-                scrollEnabled={canScrollEditor(`all:${todayKey}`, ALL_TODAY_EDITOR_MAX_HEIGHT)}
+                scrollEnabled={false}
                 selectionColor={EDITOR_SELECTION_COLOR}
                 cursorColor={EDITOR_SELECTION_COLOR}
                 textAlignVertical="top"
                 style={[
                   theme.typography.body,
                   {
-                    height: getEditorHeight(`all:${todayKey}`, otherEntries.length > 0 ? 180 : 190, ALL_TODAY_EDITOR_MAX_HEIGHT),
+                    minHeight: Math.max(getEditorHeight(`all:${todayKey}`, otherEntries.length > 0 ? 180 : 190, ALL_TODAY_EDITOR_MAX_HEIGHT), otherEntries.length > 0 ? 180 : 190),
                     color: palette.text,
                     fontSize: 17,
                     lineHeight: 30,
@@ -1058,14 +1268,14 @@ export default function EditNoteScreen() {
                     placeholder="Ecris quelque chose pour cette date..."
                     placeholderTextColor={palette.placeholder}
                     multiline
-                    scrollEnabled={canScrollEditor(`all:${entry.date}`, ALL_ENTRY_MAX_HEIGHT)}
+                    scrollEnabled={false}
                     selectionColor={EDITOR_SELECTION_COLOR}
                     cursorColor={EDITOR_SELECTION_COLOR}
                     textAlignVertical="top"
                     style={[
                       theme.typography.body,
                       {
-                        height: getEditorHeight(`all:${entry.date}`, ALL_ENTRY_MIN_HEIGHT, ALL_ENTRY_MAX_HEIGHT),
+                        minHeight: Math.max(getEditorHeight(`all:${entry.date}`, ALL_ENTRY_MIN_HEIGHT, ALL_ENTRY_MAX_HEIGHT), ALL_ENTRY_MIN_HEIGHT),
                         color: palette.text,
                         fontSize: 17,
                         lineHeight: 30,
@@ -1465,6 +1675,15 @@ export default function EditNoteScreen() {
                   title="Ajouter un rappel"
                   subtitle="Recevoir une notification"
                   onPress={() => Alert.alert("Rappel", "Les rappels arrivent bientot.")}
+                />
+
+                <NoteOptionRow
+                  icon={noteMode === "free" ? "today-outline" : "document-text-outline"}
+                  iconColor={noteMode === "free" ? "#F59E0B" : "#18A058"}
+                  iconBackground={noteMode === "free" ? "#FFF1DC" : "#D8FAF1"}
+                  title={noteMode === "free" ? "Passer en journal" : "Passer en note libre"}
+                  subtitle={noteMode === "free" ? "Rattacher la note a une date" : "Retirer la logique de date"}
+                  onPress={() => void handleChangeNoteMode(noteMode === "free" ? "day" : "free")}
                 />
 
                 <NoteOptionRow

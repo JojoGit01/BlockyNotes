@@ -7,24 +7,28 @@ export const createNoteService = (
   input: Partial<Note> & Pick<Note, "title" | "content">
 ): Note => {
   const timestamp = nowIso();
+  const noteMode = input.noteMode ?? "day";
   const dailyEntries =
-    input.dailyEntries ??
-    (input.content.trim()
-      ? [
-          {
-            id: createId("entry"),
-            date: toDateKey(timestamp),
-            content: input.content,
-            createdAt: timestamp,
-            updatedAt: timestamp
-          }
-        ]
-      : []);
+    noteMode === "free"
+      ? []
+      : input.dailyEntries ??
+        (input.content.trim()
+          ? [
+              {
+                id: createId("entry"),
+                date: toDateKey(timestamp),
+                content: input.content,
+                createdAt: timestamp,
+                updatedAt: timestamp
+              }
+            ]
+          : []);
 
   return {
     id: createId("note"),
     title: input.title.trim(),
-    content: buildNoteContentFromEntries(dailyEntries),
+    content: noteMode === "free" ? input.content : buildNoteContentFromEntries(dailyEntries),
+    noteMode,
     dailyEntries,
     folderId: input.folderId ?? null,
     tagIds: input.tagIds ?? [],

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppBackground } from "@/components/ui/AppBackground";
@@ -20,6 +20,7 @@ import { getAppPalette } from "@/theme/appPalette";
 import type { Folder, FolderIconKey } from "@/types/models";
 
 type FolderModalMode = "options" | "rename" | "icon" | "move" | "archive" | "delete";
+type FolderGridItem = { type: "personal" } | { type: "folder"; folder: Folder } | { type: "new" };
 
 const normalizeText = (text: string) =>
   text
@@ -71,13 +72,18 @@ function CountBadge({ count }: { count: number }) {
   );
 }
 
-function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: (folder: Folder) => void }) {
+function FolderTile({
+  folder,
+  notesCount,
+  onOpenOptions
+}: {
+  folder: Folder;
+  notesCount: number;
+  onOpenOptions: (folder: Folder) => void;
+}) {
   const theme = useTheme();
   const palette = getAppPalette(theme);
   const settings = useSettingsStore((state) => state.settings);
-  const notesCount = useNotesStore(
-    (state) => state.notes.filter((note) => note.folderId === folder.id && !note.isDeleted).length
-  );
   const folderIcon = getFolderIcon(folder);
   const locked = isFolderLocked(folder, settings);
 
@@ -160,7 +166,7 @@ function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: 
           }}
         >
           <Text style={[theme.typography.caption, { color: palette.textMuted, fontWeight: "800" }]} numberOfLines={1}>
-            {folder.name}
+            {locked ? "Securise" : notesCount === 0 ? "Vide" : "Actif"}
           </Text>
         </View>
       </View>
@@ -168,12 +174,9 @@ function FolderTile({ folder, onOpenOptions }: { folder: Folder; onOpenOptions: 
   );
 }
 
-function PersonalFolderTile({ onOpenOptions }: { onOpenOptions: () => void }) {
+function PersonalFolderTile({ notesCount, onOpenOptions }: { notesCount: number; onOpenOptions: () => void }) {
   const theme = useTheme();
   const palette = getAppPalette(theme);
-  const notesCount = useNotesStore(
-    (state) => state.notes.filter((note) => note.folderId === null && !note.isDeleted).length
-  );
 
   return (
     <Pressable
@@ -251,7 +254,7 @@ function PersonalFolderTile({ onOpenOptions }: { onOpenOptions: () => void }) {
           }}
         >
           <Text style={[theme.typography.caption, { color: palette.textMuted, fontWeight: "800" }]}>
-            {notesCount === 0 ? "Aucune note" : "Personnel"}
+            {notesCount === 0 ? "Aucune note" : "Actif"}
           </Text>
         </View>
       </View>
@@ -403,7 +406,17 @@ export default function FoldersScreen() {
   const [selectedMoveNoteIds, setSelectedMoveNoteIds] = useState<string[]>([]);
   const [folderLockModalMode, setFolderLockModalMode] = useState<"create" | "unlock-remove" | null>(null);
   const [folderLockError, setFolderLockError] = useState<string | null>(null);
-  const visibleNotes = notes.filter((note) => !note.isDeleted);
+  const visibleNotes = useMemo(() => notes.filter((note) => !note.isDeleted), [notes]);
+  const folderNoteCounts = useMemo(() => {
+    const counts = new Map<string | null, number>();
+
+    visibleNotes.forEach((note) => {
+      const key = note.folderId ?? null;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+
+    return counts;
+  }, [visibleNotes]);
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? null;
   const isPersonalOptions = selectedFolderId === "personal";
   const selectedFolderNotes = isPersonalOptions
@@ -426,6 +439,18 @@ export default function FoldersScreen() {
   }, [folders, searchQuery]);
   const showPersonalFolder = !searchQuery.trim() || normalizeText("Personnel").includes(normalizeText(searchQuery));
   const foundCount = filteredFolders.length + (showPersonalFolder ? 1 : 0);
+  const folderGridItems = useMemo<FolderGridItem[]>(() => {
+    const items: FolderGridItem[] = [
+      ...(showPersonalFolder ? [{ type: "personal" as const }] : []),
+      ...filteredFolders.map((folder) => ({ type: "folder" as const, folder }))
+    ];
+
+    if (!searchQuery.trim()) {
+      items.push({ type: "new" });
+    }
+
+    return items;
+  }, [filteredFolders, searchQuery, showPersonalFolder]);
   const floatingButtonBottom = insets.bottom + 90;
   const heroPreviewFolders = folders.slice(0, 3);
 
@@ -558,204 +583,239 @@ export default function FoldersScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <AppBackground />
-      <ScrollView
+      <FlatList
+        data={folderGridItems}
+        keyExtractor={(item) => (item.type === "folder" ? item.folder.id : item.type)}
+        numColumns={2}
+        columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 12 }}
         contentContainerStyle={{
           paddingHorizontal: 14,
           paddingTop: theme.spacing.md,
           paddingBottom: floatingButtonBottom + 42
         }}
+        initialNumToRender={8}
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         keyboardShouldPersistTaps="handled"
-      >
-        <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <View style={{ flex: 1, marginLeft: 4 }}>
-              <Text
-                style={[
-                  theme.typography.caption,
-                  { color: palette.text, letterSpacing: 5, textTransform: "uppercase", fontWeight: "800" }
-                ]}
-              >
-                Organisation
-              </Text>
-              <Text
-                style={[
-                  theme.typography.h1,
-                  { color: palette.text, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }
-                ]}
-              >
-                Dossiers
-              </Text>
-            </View>
-
-            <AppHeaderLogo />
-          </View>
-
-          <View
-            style={{
-              borderRadius: 24,
-              padding: 18,
-              minHeight: 132,
-              overflow: "hidden",
-              backgroundColor: "#0F1B3A",
-              shadowColor: "#0F1B3A",
-              shadowOpacity: 0.22,
-              shadowRadius: 18,
-              shadowOffset: { width: 0, height: 10 },
-              elevation: 8
-            }}
-          >
-            <View
-              style={{
-                position: "absolute",
-                right: -46,
-                top: -58,
-                width: 176,
-                height: 176,
-                borderRadius: 88,
-                backgroundColor: "rgba(255,255,255,0.12)"
-              }}
-            />
-            <View
-              style={{
-                position: "absolute",
-                right: 24,
-                bottom: -86,
-                width: 156,
-                height: 156,
-                borderRadius: 78,
-                backgroundColor: "rgba(124,77,255,0.24)"
-              }}
-            />
-
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-              <View
-                style={{
-                  width: 58,
-                  height: 58,
-                  borderRadius: 20,
-                  backgroundColor: "rgba(255,255,255,0.16)",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
-              >
-                <Ionicons name="folder-open-outline" size={27} color="#FFFFFF" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: "#FFFFFF", fontSize: 26, lineHeight: 31, fontWeight: "900" }}>Espaces de notes</Text>
-                <Text style={[theme.typography.body, { color: "#F1ECFF", marginTop: 6 }]} numberOfLines={1}>
-                  Projets, perso, clients et idees rangees au meme endroit.
+        maxToRenderPerBatch={8}
+        removeClippedSubviews={Platform.OS !== "web"}
+        scrollEventThrottle={16}
+        windowSize={7}
+        ListHeaderComponent={
+          <View style={{ gap: 12, marginBottom: 12 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <View style={{ flex: 1, marginLeft: 4 }}>
+                <Text
+                  style={[
+                    theme.typography.caption,
+                    { color: palette.text, letterSpacing: 5, textTransform: "uppercase", fontWeight: "800" }
+                  ]}
+                >
+                  Organisation
+                </Text>
+                <Text
+                  style={[
+                    theme.typography.h1,
+                    { color: palette.text, marginTop: 2, fontSize: 36, lineHeight: 40, fontWeight: "900" }
+                  ]}
+                >
+                  Dossiers
                 </Text>
               </View>
+
+              <AppHeaderLogo />
             </View>
 
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 18 }}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                {[
-                  { id: "personal", name: "Personnel", icon: "folder-open-outline" as keyof typeof Ionicons.glyphMap, color: "#4F6EF7", background: "#E4ECFF" },
-                  ...heroPreviewFolders.map((folder) => {
-                    const folderIcon = getFolderIcon(folder);
+            <View
+              style={{
+                borderRadius: 24,
+                padding: 18,
+                minHeight: 132,
+                overflow: "hidden",
+                backgroundColor: "#0F1B3A",
+                shadowColor: "#0F1B3A",
+                shadowOpacity: 0.22,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: 8
+              }}
+            >
+              <View
+                style={{
+                  position: "absolute",
+                  right: -46,
+                  top: -58,
+                  width: 176,
+                  height: 176,
+                  borderRadius: 88,
+                  backgroundColor: "rgba(255,255,255,0.12)"
+                }}
+              />
+              <View
+                style={{
+                  position: "absolute",
+                  right: 24,
+                  bottom: -86,
+                  width: 156,
+                  height: 156,
+                  borderRadius: 78,
+                  backgroundColor: "rgba(124,77,255,0.24)"
+                }}
+              />
 
-                    return {
-                      id: folder.id,
-                      name: folder.name,
-                      icon: folderIcon.icon,
-                      color: folderIcon.color,
-                      background: folderIcon.backgroundColor
-                    };
-                  })
-                ].slice(0, 4).map((entry, index) => (
-                  <View
-                    key={entry.id}
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 13,
-                      backgroundColor: entry.background,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginLeft: index === 0 ? 0 : -8,
-                      borderWidth: 2,
-                      borderColor: "#0F1B3A"
-                    }}
-                  >
-                    <Ionicons name={entry.icon} size={15} color={entry.color} />
-                  </View>
-                ))}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                <View
+                  style={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: 20,
+                    backgroundColor: "rgba(255,255,255,0.16)",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}
+                >
+                  <Ionicons name="folder-open-outline" size={27} color="#FFFFFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#FFFFFF", fontSize: 26, lineHeight: 31, fontWeight: "900" }}>Espaces de notes</Text>
+                  <Text style={[theme.typography.body, { color: "#F1ECFF", marginTop: 6 }]} numberOfLines={1}>
+                    Projets, perso, clients et idees rangees au meme endroit.
+                  </Text>
+                </View>
               </View>
 
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 18 }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  {[
+                    { id: "personal", name: "Personnel", icon: "folder-open-outline" as keyof typeof Ionicons.glyphMap, color: "#4F6EF7", background: "#E4ECFF" },
+                    ...heroPreviewFolders.map((folder) => {
+                      const folderIcon = getFolderIcon(folder);
+
+                      return {
+                        id: folder.id,
+                        name: folder.name,
+                        icon: folderIcon.icon,
+                        color: folderIcon.color,
+                        background: folderIcon.backgroundColor
+                      };
+                    })
+                  ].slice(0, 4).map((entry, index) => (
+                    <View
+                      key={entry.id}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 13,
+                        backgroundColor: entry.background,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginLeft: index === 0 ? 0 : -8,
+                        borderWidth: 2,
+                        borderColor: "#0F1B3A"
+                      }}
+                    >
+                      <Ionicons name={entry.icon} size={15} color={entry.color} />
+                    </View>
+                  ))}
+                </View>
+
+                <Pressable
+                  onPress={() => setShowCreateModal(true)}
+                  style={({ pressed }) => ({
+                    minHeight: 38,
+                    borderRadius: 14,
+                    backgroundColor: "rgba(255,255,255,0.16)",
+                    paddingHorizontal: 12,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 7,
+                    opacity: pressed ? 0.82 : 1
+                  })}
+                >
+                  <Ionicons name="add" size={16} color="#FFFFFF" />
+                  <Text style={[theme.typography.label, { color: "#FFFFFF", fontWeight: "900" }]}>Nouveau</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View
+              style={{
+                minHeight: 56,
+                borderRadius: 20,
+                backgroundColor: palette.surface,
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 16,
+                gap: 12,
+                shadowColor: palette.shadow,
+                shadowOpacity: 0.05,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: 5
+              }}
+            >
+              <Ionicons name="search-outline" size={17} color="#7B7F89" />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Rechercher un dossier..."
+                placeholderTextColor={palette.placeholder}
+                style={[theme.typography.body, { flex: 1, color: palette.text, paddingVertical: 8 }]}
+              />
               <Pressable
-                onPress={() => setShowCreateModal(true)}
+                onPress={() => setShowSearchModal(true)}
                 style={({ pressed }) => ({
-                  minHeight: 38,
-                  borderRadius: 14,
-                  backgroundColor: "rgba(255,255,255,0.16)",
-                  paddingHorizontal: 12,
-                  flexDirection: "row",
+                  width: 34,
+                  height: 34,
+                  borderRadius: 13,
+                  backgroundColor: palette.surfaceMuted,
                   alignItems: "center",
-                  gap: 7,
+                  justifyContent: "center",
                   opacity: pressed ? 0.82 : 1
                 })}
               >
-                <Ionicons name="add" size={16} color="#FFFFFF" />
-                <Text style={[theme.typography.label, { color: "#FFFFFF", fontWeight: "900" }]}>Nouveau</Text>
+                <Ionicons name="list" size={18} color={palette.text} />
               </Pressable>
             </View>
-          </View>
 
-          <View
-            style={{
-              minHeight: 56,
-              borderRadius: 20,
-              backgroundColor: palette.surface,
-              flexDirection: "row",
-              alignItems: "center",
-              paddingHorizontal: 16,
-              gap: 12,
-              shadowColor: palette.shadow,
-              shadowOpacity: 0.05,
-              shadowRadius: 18,
-              shadowOffset: { width: 0, height: 10 },
-              elevation: 5
-            }}
-          >
-            <Ionicons name="search-outline" size={17} color="#7B7F89" />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Rechercher un dossier..."
-              placeholderTextColor={palette.placeholder}
-              style={[theme.typography.body, { flex: 1, color: palette.text, paddingVertical: 8 }]}
-            />
-            <Pressable
-              onPress={() => setShowSearchModal(true)}
-              style={({ pressed }) => ({
-                width: 34,
-                height: 34,
-                borderRadius: 13,
-                backgroundColor: palette.surfaceMuted,
+            <Text style={[theme.typography.label, { color: palette.textMuted, fontWeight: "900" }]}>
+              {foundCount} dossier{foundCount > 1 ? "s" : ""} trouve{foundCount > 1 ? "s" : ""}
+            </Text>
+          </View>
+        }
+        ListEmptyComponent={
+          searchQuery.trim() ? (
+            <View
+              style={{
+                minHeight: 118,
+                borderRadius: 22,
+                backgroundColor: palette.surface,
                 alignItems: "center",
                 justifyContent: "center",
-                opacity: pressed ? 0.82 : 1
-              })}
+                padding: 18,
+                shadowColor: palette.shadow,
+                shadowOpacity: 0.05,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: 5
+              }}
             >
-              <Ionicons name="list" size={18} color={palette.text} />
-            </Pressable>
-          </View>
+              <Ionicons name="search-outline" size={22} color={palette.textMuted} />
+              <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900", marginTop: 8 }]}>Aucun dossier trouve</Text>
+            </View>
+          ) : null
+        }
+        renderItem={({ item }) => {
+          if (item.type === "personal") {
+            return <PersonalFolderTile notesCount={folderNoteCounts.get(null) ?? 0} onOpenOptions={openPersonalOptions} />;
+          }
 
-          <Text style={[theme.typography.label, { color: palette.textMuted, fontWeight: "900" }]}>
-            {foundCount} dossier{foundCount > 1 ? "s" : ""} trouve{foundCount > 1 ? "s" : ""}
-          </Text>
+          if (item.type === "new") {
+            return <NewFolderTile onPress={() => setShowCreateModal(true)} />;
+          }
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 12 }}>
-            {showPersonalFolder ? <PersonalFolderTile onOpenOptions={openPersonalOptions} /> : null}
-            {filteredFolders.map((folder) => (
-              <FolderTile key={folder.id} folder={folder} onOpenOptions={openFolderOptions} />
-            ))}
-            {!searchQuery.trim() ? <NewFolderTile onPress={() => setShowCreateModal(true)} /> : null}
-          </View>
-        </View>
-      </ScrollView>
+          return <FolderTile folder={item.folder} notesCount={folderNoteCounts.get(item.folder.id) ?? 0} onOpenOptions={openFolderOptions} />;
+        }}
+      />
 
       <Modal visible={showSearchModal} transparent animationType="slide" onRequestClose={() => setShowSearchModal(false)}>
         <Pressable
