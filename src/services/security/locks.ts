@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        locks.ts
+ * @description Resolves effective note and folder security requirements.
+ *
+ * @project     BlockyNotes
+ * @module      Services / Security
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-05-11
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import type { AppSettings, Folder, Note } from "@/types/models";
 
 export const isFolderLocked = (folder: Folder | undefined, settings: AppSettings) =>

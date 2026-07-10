@@ -1,9 +1,37 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        [id].tsx
+ * @description Implements the note editor, autosave, history, search, links, and daily-entry workflows.
+ *
+ * @project     BlockyNotes
+ * @module      Application / Notes
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   BackHandler,
+  Linking,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -13,9 +41,11 @@ import {
   TextInput,
   View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { SaveStatusIndicator } from "@/components/ui/SaveStatusIndicator";
 import { addDays, fromDateKey, toDateKey } from "@/lib/date";
 import {
   buildNoteContentFromEntries,
@@ -23,6 +53,8 @@ import {
   upsertDailyEntry
 } from "@/services/notes/dailyEntries";
 import { getNoteIcon, noteIconOptions } from "@/services/notes/noteIcon";
+import { listNoteRevisions, queueNoteRevision } from "@/services/notes/noteHistory";
+import { getNoteBacklinks, resolveNoteLinks } from "@/services/notes/noteInsights";
 import { useTheme } from "@/hooks/useTheme";
 import { LockCodeModal } from "@/components/security/LockCodeModal";
 import { useFoldersStore } from "@/store/useFoldersStore";
@@ -30,18 +62,27 @@ import { useNotesStore } from "@/store/useNotesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { hashLockCode, verifyLockCode } from "@/lib/security";
 import { getAppPalette } from "@/theme/appPalette";
-import type { NoteIconKey, NoteMode } from "@/types/models";
+import type { NoteIconKey, NoteMode, NoteRevision } from "@/types/models";
 import { getNoteLockHash, isNoteLocked } from "@/services/security/locks";
+import { hapticImpact, hapticSelection, hapticSuccess, hapticWarning } from "@/lib/haptics";
 
 type ViewMode = "day" | "all";
+type FocusedEditorTarget = "free" | "day" | "historical";
+type FocusedEditor = {
+  content: string;
+  dateKey: string | null;
+  key: string;
+  target: FocusedEditorTarget;
+  title: string;
+  selection?: { start: number; end: number };
+};
+type NoteSearchResult = FocusedEditor & { id: string; snippet: string };
 
 const DAY_EDITOR_MIN_HEIGHT = 290;
-const DAY_EDITOR_MAX_HEIGHT = 520;
-const ALL_TODAY_EDITOR_MAX_HEIGHT = 380;
 const ALL_ENTRY_MIN_HEIGHT = 96;
-const ALL_ENTRY_MAX_HEIGHT = 320;
 const FREE_EDITOR_MIN_HEIGHT = 420;
-const EDITOR_SELECTION_COLOR = "#7C4DFF";
+const EDITOR_SELECTION_COLOR = "#4F6EF7";
+const EDITOR_CURSOR_COLOR = "#4F6EF7";
 const dayLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 const entryDateFormatter = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
@@ -114,6 +155,313 @@ function NoteOptionRow({
   );
 }
 
+function EditorSectionHeader({
+  accentColor,
+  onExpand,
+  title
+}: {
+  accentColor: string;
+  onExpand: () => void;
+  title: string;
+}) {
+  const theme = useTheme();
+  const palette = getAppPalette(theme);
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <Text
+        style={[
+          theme.typography.caption,
+          { color: accentColor, letterSpacing: 2, textTransform: "uppercase", fontWeight: "900", flex: 1 }
+        ]}
+        numberOfLines={1}
+      >
+        {title}
+      </Text>
+      <Pressable
+        accessibilityLabel="Ouvrir l'editeur en plein ecran"
+        accessibilityHint="Affiche un editeur dedie plus confortable pour la selection de texte"
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={() => {
+          void hapticImpact();
+          onExpand();
+        }}
+        style={({ pressed }) => ({
+          width: 34,
+          height: 34,
+          borderRadius: 13,
+          backgroundColor: palette.surfaceMuted,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: pressed ? 0.78 : 1
+        })}
+      >
+        <Ionicons name="expand-outline" size={16} color={palette.text} />
+      </Pressable>
+    </View>
+  );
+}
+
+function SearchSnippet({ query, text }: { query: string; text: string }) {
+  const theme = useTheme();
+  const palette = getAppPalette(theme);
+  const index = text.toLocaleLowerCase("fr-FR").indexOf(query.trim().toLocaleLowerCase("fr-FR"));
+
+  if (index < 0 || !query.trim()) {
+    return <Text style={[theme.typography.body, { color: palette.textMuted }]} numberOfLines={2}>{text}</Text>;
+  }
+
+  return (
+    <Text style={[theme.typography.body, { color: palette.textMuted }]} numberOfLines={2}>
+      {text.slice(0, index)}
+      <Text style={{ color: "#4F6EF7", fontWeight: "900" }}>{text.slice(index, index + query.trim().length)}</Text>
+      {text.slice(index + query.trim().length)}
+    </Text>
+  );
+}
+
+function FocusedEditorModal({
+  editor,
+  onChange,
+  onClose
+}: {
+  editor: FocusedEditor;
+  onChange: (content: string) => void;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const palette = getAppPalette(theme);
+  const [content, setContent] = useState(editor.content);
+  const [selection, setSelection] = useState(
+    editor.selection ?? { start: editor.content.length, end: editor.content.length }
+  );
+  const latestContentRef = useRef(editor.content);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyGroupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyGroupOpenRef = useRef(false);
+  const [past, setPast] = useState<string[]>([]);
+  const [future, setFuture] = useState<string[]>([]);
+
+  const saveLatestContent = () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    onChange(latestContentRef.current);
+  };
+
+  const handleChange = (nextContent: string) => {
+    if (!historyGroupOpenRef.current) {
+      setPast((current) => [...current.slice(-39), latestContentRef.current]);
+      setFuture([]);
+      historyGroupOpenRef.current = true;
+    }
+
+    if (historyGroupTimeoutRef.current) {
+      clearTimeout(historyGroupTimeoutRef.current);
+    }
+
+    historyGroupTimeoutRef.current = setTimeout(() => {
+      historyGroupOpenRef.current = false;
+      historyGroupTimeoutRef.current = null;
+    }, 600);
+
+    latestContentRef.current = nextContent;
+    setContent(nextContent);
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
+      onChange(nextContent);
+    }, 450);
+  };
+
+  const handleClose = () => {
+    saveLatestContent();
+    void hapticSuccess();
+    onClose();
+  };
+
+  const resetHistoryGroup = () => {
+    historyGroupOpenRef.current = false;
+    if (historyGroupTimeoutRef.current) {
+      clearTimeout(historyGroupTimeoutRef.current);
+      historyGroupTimeoutRef.current = null;
+    }
+  };
+
+  const handleUndo = () => {
+    const previous = past[past.length - 1];
+    if (previous === undefined) {
+      return;
+    }
+
+    resetHistoryGroup();
+    setPast((current) => current.slice(0, -1));
+    setFuture((current) => [latestContentRef.current, ...current].slice(0, 40));
+    latestContentRef.current = previous;
+    setContent(previous);
+    onChange(previous);
+    void hapticSelection();
+  };
+
+  const handleRedo = () => {
+    const next = future[0];
+    if (next === undefined) {
+      return;
+    }
+
+    resetHistoryGroup();
+    setFuture((current) => current.slice(1));
+    setPast((current) => [...current.slice(-39), latestContentRef.current]);
+    latestContentRef.current = next;
+    setContent(next);
+    onChange(next);
+    void hapticSelection();
+  };
+
+  useEffect(
+    () => () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      if (historyGroupTimeoutRef.current) {
+        clearTimeout(historyGroupTimeoutRef.current);
+      }
+    },
+    []
+  );
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={handleClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: palette.surface }}>
+        <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12, gap: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <Pressable
+              accessibilityLabel="Fermer l'editeur plein ecran"
+              accessibilityRole="button"
+              onPress={handleClose}
+              style={({ pressed }) => ({
+                width: 44,
+                height: 44,
+                borderRadius: 16,
+                backgroundColor: palette.surfaceMuted,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.8 : 1
+              })}
+            >
+              <Ionicons name="contract-outline" size={18} color={palette.text} />
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={[theme.typography.h3, { color: palette.text, fontWeight: "900" }]} numberOfLines={1}>
+                {editor.title}
+              </Text>
+              <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={1}>
+                Edition concentree
+              </Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Annuler la derniere modification"
+              accessibilityRole="button"
+              disabled={past.length === 0}
+              onPress={handleUndo}
+              style={({ pressed }) => ({
+                width: 42,
+                height: 42,
+                borderRadius: 15,
+                backgroundColor: palette.surfaceMuted,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: past.length === 0 ? 0.4 : pressed ? 0.72 : 1
+              })}
+            >
+              <Ionicons name="arrow-undo" size={18} color={palette.text} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Retablir la modification"
+              accessibilityRole="button"
+              disabled={future.length === 0}
+              onPress={handleRedo}
+              style={({ pressed }) => ({
+                width: 42,
+                height: 42,
+                borderRadius: 15,
+                backgroundColor: palette.surfaceMuted,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: future.length === 0 ? 0.4 : pressed ? 0.72 : 1
+              })}
+            >
+              <Ionicons name="arrow-redo" size={18} color={palette.text} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Terminer l'edition"
+              accessibilityRole="button"
+              onPress={handleClose}
+              style={({ pressed }) => ({
+                width: 44,
+                height: 44,
+                borderRadius: 16,
+                backgroundColor: "#0F1B3A",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: pressed ? 0.84 : 1
+              })}
+            >
+              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+            </Pressable>
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              borderRadius: 22,
+              backgroundColor: palette.surface,
+              borderWidth: 1,
+              borderColor: "#B8C5FF",
+              paddingHorizontal: 18,
+              paddingVertical: 16
+            }}
+          >
+            <TextInput
+              autoFocus
+              accessibilityLabel={`Contenu de ${editor.title}`}
+              value={content}
+              onChangeText={handleChange}
+              selection={selection}
+              onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
+              multiline
+              scrollEnabled
+              selectionColor={EDITOR_SELECTION_COLOR}
+              cursorColor={EDITOR_CURSOR_COLOR}
+              placeholder="Ecris quelque chose..."
+              placeholderTextColor={palette.placeholder}
+              textAlignVertical="top"
+              textBreakStrategy="simple"
+              style={[
+                theme.typography.body,
+                {
+                  flex: 1,
+                  color: palette.text,
+                  fontSize: 18,
+                  lineHeight: 31,
+                  paddingVertical: 0
+                }
+              ]}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export default function EditNoteScreen() {
   const { id, returnFolderId } = useLocalSearchParams<{ id: string; returnFolderId?: string }>();
   const theme = useTheme();
@@ -121,6 +469,7 @@ export default function EditNoteScreen() {
   const folders = useFoldersStore((state) => state.folders);
   const settings = useSettingsStore((state) => state.settings);
   const note = useNotesStore((state) => state.notes.find((entry) => entry.id === id));
+  const allNotes = useNotesStore((state) => state.notes);
   const updateNote = useNotesStore((state) => state.updateNote);
   const archiveNote = useNotesStore((state) => state.archiveNote);
   const restoreNote = useNotesStore((state) => state.restoreNote);
@@ -132,12 +481,14 @@ export default function EditNoteScreen() {
   const [freeContent, setFreeContent] = useState(note?.content ?? "");
   const [folderId, setFolderId] = useState<string | null>(note?.folderId ?? null);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
+  const [showSavedLabel, setShowSavedLabel] = useState(true);
   const [showActions, setShowActions] = useState(false);
   const [showMovePicker, setShowMovePicker] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [showIconModal, setShowIconModal] = useState(false);
   const [showDateModal, setShowDateModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [noteUnlocked, setNoteUnlocked] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const [noteLockModalMode, setNoteLockModalMode] = useState<"create" | "unlock-remove" | null>(null);
@@ -147,17 +498,29 @@ export default function EditNoteScreen() {
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey());
   const [allJumpDateKey, setAllJumpDateKey] = useState(toDateKey());
   const [editorContentHeights, setEditorContentHeights] = useState<Record<string, number>>({});
+  const [focusedEditor, setFocusedEditor] = useState<FocusedEditor | null>(null);
+  const [historicalEditorRevisions, setHistoricalEditorRevisions] = useState<Record<string, number>>({});
+  const [showNoteSearch, setShowNoteSearch] = useState(false);
+  const [noteSearchQuery, setNoteSearchQuery] = useState("");
+  const [showOutline, setShowOutline] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [noteRevisions, setNoteRevisions] = useState<NoteRevision[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const isFirstSync = useRef(true);
   const screenScrollRef = useRef<ScrollView | null>(null);
-  const dayEditorYRef = useRef(0);
   const allCardYRef = useRef(0);
   const allEntryYRef = useRef<Record<string, number>>({});
   const allEntryDraftsRef = useRef<Record<string, string>>({});
   const allEntrySaveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const allEntrySaveVersionsRef = useRef<Record<string, number>>({});
+  const mainSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveRevisionRef = useRef(0);
+  const hasPendingSaveRef = useRef(false);
+  const isLeavingRef = useRef(false);
   const latestDraftRef = useRef({
     dateKey: selectedDateKey,
     content: dayContent,
@@ -173,11 +536,84 @@ export default function EditNoteScreen() {
   const requiresNoteUnlock = Boolean(note && isNoteLocked(note, containingFolder, settings) && noteLockHash && !noteUnlocked);
 
   const entries = useMemo(() => (note ? normalizeDailyEntries(note) : []), [note]);
+  const liveLinkContent = useMemo(() => {
+    if (noteMode === "free") {
+      return freeContent;
+    }
+
+    return buildNoteContentFromEntries(
+      entries.map((entry) => ({
+        ...entry,
+        content:
+          entry.date === selectedDateKey
+            ? dayContent
+            : allEntryDraftsRef.current[entry.date] ?? entry.content
+      }))
+    );
+  }, [dayContent, entries, freeContent, noteMode, selectedDateKey]);
+  const outgoingLinks = useMemo(
+    () => resolveNoteLinks(liveLinkContent, allNotes, note?.id),
+    [allNotes, liveLinkContent, note?.id]
+  );
+  const backlinks = useMemo(
+    () => (note ? getNoteBacklinks(note, allNotes) : []),
+    [allNotes, note]
+  );
+  const linkCandidates = useMemo(
+    () => allNotes.filter((candidate) => candidate.id !== note?.id && !candidate.isDeleted && !candidate.isArchived && candidate.title.trim()).sort((a, b) => a.title.localeCompare(b.title, "fr-FR")),
+    [allNotes, note?.id]
+  );
   const entryDates = useMemo(() => new Set(entries.map((entry) => entry.date)), [entries]);
   const otherEntries = useMemo(
     () => [...entries].filter((entry) => entry.date !== todayKey).reverse(),
     [entries, todayKey]
   );
+  const searchResults = useMemo<NoteSearchResult[]>(() => {
+    const query = noteSearchQuery.trim().toLocaleLowerCase("fr-FR");
+
+    if (!query) {
+      return [];
+    }
+
+    const sources = noteMode === "free"
+      ? [{ content: freeContent, dateKey: null as string | null, target: "free" as const, title: "Note libre" }]
+      : entries.map((entry) => ({
+          content:
+            entry.date === selectedDateKey
+              ? dayContent
+              : allEntryDraftsRef.current[entry.date] ?? entry.content,
+          dateKey: entry.date,
+          target:
+            entry.date === selectedDateKey || entry.date === todayKey
+              ? ("day" as const)
+              : ("historical" as const),
+          title: entryDateFormatter.format(fromDateKey(entry.date))
+        }));
+    const results: NoteSearchResult[] = [];
+
+    sources.forEach((source) => {
+      const normalizedContent = source.content.toLocaleLowerCase("fr-FR");
+      let start = normalizedContent.indexOf(query);
+      let occurrence = 0;
+
+      while (start >= 0 && results.length < 50) {
+        const end = start + query.length;
+        const snippetStart = Math.max(0, start - 34);
+        const snippetEnd = Math.min(source.content.length, end + 52);
+        results.push({
+          ...source,
+          id: `${source.dateKey ?? "free"}-${occurrence}-${start}`,
+          key: `search:${source.dateKey ?? "free"}:${start}`,
+          selection: { start, end },
+          snippet: `${snippetStart > 0 ? "..." : ""}${source.content.slice(snippetStart, snippetEnd).replace(/\s+/g, " ")}${snippetEnd < source.content.length ? "..." : ""}`
+        });
+        occurrence += 1;
+        start = normalizedContent.indexOf(query, end);
+      }
+    });
+
+    return results;
+  }, [dayContent, entries, freeContent, noteMode, noteSearchQuery, selectedDateKey, todayKey]);
   const selectedDate = useMemo(() => fromDateKey(selectedDateKey), [selectedDateKey]);
   const allJumpDate = useMemo(() => fromDateKey(allJumpDateKey), [allJumpDateKey]);
   const calendarDays = useMemo(() => {
@@ -192,10 +628,6 @@ export default function EditNoteScreen() {
     selectedDateKey === todayKey
       ? "Auj."
       : selectedDate.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-  const allDateLabel =
-    allJumpDateKey === todayKey
-      ? "Auj."
-      : allJumpDate.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
   const activeCalendarDateKey = viewMode === "all" ? allJumpDateKey : selectedDateKey;
   const selectedDateTitle =
     selectedDateKey === todayKey ? "Aujourd'hui" : entryDateFormatter.format(selectedDate);
@@ -203,33 +635,6 @@ export default function EditNoteScreen() {
   const activeNoteIcon = note
     ? getNoteIcon(note)
     : noteIconOptions.find((option) => option.key === "document") ?? noteIconOptions[0];
-  const saveStatus = useMemo(() => {
-    if (saveState === "saving") {
-      return {
-        icon: "cloud-upload-outline" as keyof typeof Ionicons.glyphMap,
-        color: "#2563EB",
-        backgroundColor: "#DBEAFE",
-        label: "Sauvegarde en cours"
-      };
-    }
-
-    if (saveState === "dirty") {
-      return {
-        icon: "cloud-outline" as keyof typeof Ionicons.glyphMap,
-        color: "#D97706",
-        backgroundColor: "#FEF3C7",
-        label: "Sauvegarde a venir"
-      };
-    }
-
-    return {
-      icon: "checkmark-circle-outline" as keyof typeof Ionicons.glyphMap,
-      color: "#059669",
-      backgroundColor: "#D1FAE5",
-      label: "Sauvegarde"
-    };
-  }, [saveState]);
-
   useEffect(() => {
     latestDraftRef.current = {
       dateKey: selectedDateKey,
@@ -242,8 +647,27 @@ export default function EditNoteScreen() {
   }, [dayContent, folderId, freeContent, noteMode, selectedDateKey, title]);
 
   useEffect(() => {
+    if (saveState !== "saved") {
+      setShowSavedLabel(false);
+      return;
+    }
+
+    setShowSavedLabel(true);
+    const timeout = setTimeout(() => setShowSavedLabel(false), 1500);
+    return () => clearTimeout(timeout);
+  }, [saveState]);
+
+  useEffect(() => {
     setNoteUnlocked(false);
     setUnlockError(null);
+    setEditorContentHeights({});
+    setFocusedEditor(null);
+    setHistoricalEditorRevisions({});
+    allEntryYRef.current = {};
+    allEntryDraftsRef.current = {};
+    allEntrySaveVersionsRef.current = {};
+    hasPendingSaveRef.current = false;
+    isLeavingRef.current = false;
   }, [noteId]);
 
   useEffect(() => {
@@ -288,6 +712,7 @@ export default function EditNoteScreen() {
       await updateNote(noteId, {
         title: nextTitle.trim(),
         folderId: nextFolderId,
+        isInbox: nextFolderId === null ? latestNote.isInbox : false,
         noteMode: "day",
         dailyEntries,
         content: buildNoteContentFromEntries(dailyEntries)
@@ -302,9 +727,12 @@ export default function EditNoteScreen() {
         return;
       }
 
+      const latestNote = useNotesStore.getState().notes.find((entry) => entry.id === noteId);
+
       await updateNote(noteId, {
         title: nextTitle.trim(),
         folderId: nextFolderId,
+        isInbox: nextFolderId === null ? latestNote?.isInbox : false,
         noteMode: "free",
         dailyEntries: [],
         content
@@ -334,6 +762,7 @@ export default function EditNoteScreen() {
       await updateNote(noteId, {
         title: nextTitle.trim(),
         folderId: nextFolderId,
+        isInbox: nextFolderId === null ? latestNote.isInbox : false,
         noteMode: "day",
         dailyEntries,
         content: buildNoteContentFromEntries(dailyEntries)
@@ -347,6 +776,13 @@ export default function EditNoteScreen() {
       return;
     }
 
+    saveRevisionRef.current += 1;
+
+    if (mainSaveTimeoutRef.current) {
+      clearTimeout(mainSaveTimeoutRef.current);
+      mainSaveTimeoutRef.current = null;
+    }
+
     const latestDraft = latestDraftRef.current;
     const allEntryDrafts = allEntryDraftsRef.current;
 
@@ -354,12 +790,22 @@ export default function EditNoteScreen() {
       clearTimeout(timeout);
     }
 
+    for (const dateKey of Object.keys(allEntrySaveVersionsRef.current)) {
+      allEntrySaveVersionsRef.current[dateKey] += 1;
+    }
+
     allEntrySaveTimeoutsRef.current = {};
+
+    if (!hasPendingSaveRef.current && Object.keys(allEntryDrafts).length === 0) {
+      return;
+    }
+
     setSaveState("saving");
 
     if (latestDraft.noteMode === "free") {
       await persistFreeNoteChanges(latestDraft.freeContent, latestDraft.title, latestDraft.folderId);
       allEntryDraftsRef.current = {};
+      hasPendingSaveRef.current = false;
       setSaveState("saved");
       return;
     }
@@ -373,11 +819,25 @@ export default function EditNoteScreen() {
       latestDraft.folderId
     );
     allEntryDraftsRef.current = {};
+    hasPendingSaveRef.current = false;
     setSaveState("saved");
   }, [noteId, persistEntryChanges, persistFreeNoteChanges]);
 
   const handleBack = useCallback(async () => {
-    await flushPendingSave();
+    if (isLeavingRef.current) {
+      return;
+    }
+
+    isLeavingRef.current = true;
+    try {
+      await flushPendingSave();
+    } catch {
+      isLeavingRef.current = false;
+      setSaveState("dirty");
+      Alert.alert("Sauvegarde impossible", "La note n'a pas pu etre sauvegardee. Reessaie avant de quitter.");
+      return;
+    }
+
     if (returnFolderId) {
       router.replace({ pathname: "/folders/[id]", params: { id: returnFolderId } });
       return;
@@ -396,27 +856,70 @@ export default function EditNoteScreen() {
       return;
     }
 
+    hasPendingSaveRef.current = true;
+    const revision = saveRevisionRef.current + 1;
+    saveRevisionRef.current = revision;
+
     if (noteMode === "free") {
       setSaveState("dirty");
 
       const timeout = setTimeout(async () => {
         setSaveState("saving");
-        await persistFreeNoteChanges(freeContent, title, folderId);
-        setSaveState("saved");
-      }, 450);
+        try {
+          await persistFreeNoteChanges(freeContent, title, folderId);
+          mainSaveTimeoutRef.current = null;
 
-      return () => clearTimeout(timeout);
+          if (saveRevisionRef.current === revision) {
+            hasPendingSaveRef.current = false;
+            setSaveState("saved");
+          }
+        } catch {
+          mainSaveTimeoutRef.current = null;
+          if (saveRevisionRef.current === revision) {
+            hasPendingSaveRef.current = true;
+            setSaveState("dirty");
+          }
+        }
+      }, 450);
+      mainSaveTimeoutRef.current = timeout;
+
+      return () => {
+        clearTimeout(timeout);
+        if (mainSaveTimeoutRef.current === timeout) {
+          mainSaveTimeoutRef.current = null;
+        }
+      };
     }
 
     setSaveState("dirty");
 
     const timeout = setTimeout(async () => {
       setSaveState("saving");
-      await persistNoteChanges(selectedDateKey, dayContent, title, folderId);
-      setSaveState(Object.keys(allEntryDraftsRef.current).length > 0 ? "dirty" : "saved");
-    }, 450);
+      try {
+        await persistNoteChanges(selectedDateKey, dayContent, title, folderId);
+        mainSaveTimeoutRef.current = null;
 
-    return () => clearTimeout(timeout);
+        if (saveRevisionRef.current === revision) {
+          const hasEntryDrafts = Object.keys(allEntryDraftsRef.current).length > 0;
+          hasPendingSaveRef.current = hasEntryDrafts;
+          setSaveState(hasEntryDrafts ? "dirty" : "saved");
+        }
+      } catch {
+        mainSaveTimeoutRef.current = null;
+        if (saveRevisionRef.current === revision) {
+          hasPendingSaveRef.current = true;
+          setSaveState("dirty");
+        }
+      }
+    }, 450);
+    mainSaveTimeoutRef.current = timeout;
+
+    return () => {
+      clearTimeout(timeout);
+      if (mainSaveTimeoutRef.current === timeout) {
+        mainSaveTimeoutRef.current = null;
+      }
+    };
   }, [dayContent, folderId, freeContent, noteId, noteMode, persistFreeNoteChanges, persistNoteChanges, selectedDateKey, title]);
 
   useEffect(() => {
@@ -427,7 +930,9 @@ export default function EditNoteScreen() {
 
     return () => {
       subscription.remove();
-      void flushPendingSave();
+      if (!isLeavingRef.current) {
+        void flushPendingSave().catch(() => undefined);
+      }
     };
   }, [flushPendingSave, handleBack]);
 
@@ -514,6 +1019,7 @@ export default function EditNoteScreen() {
     setShowIconPicker(false);
     setShowFolderModal(false);
     setShowActions(false);
+    void hapticSuccess();
   };
 
   const handleSelectIcon = async (nextIconKey: NoteIconKey) => {
@@ -618,12 +1124,6 @@ export default function EditNoteScreen() {
     setShowScrollTop((current) => (current === nextVisible ? current : nextVisible));
   };
 
-  const scrollToEditor = (targetY: number) => {
-    requestAnimationFrame(() => {
-      screenScrollRef.current?.scrollTo({ y: Math.max(targetY - 20, 0), animated: true });
-    });
-  };
-
   const rememberEditorContentHeight = (editorKey: string, height: number) => {
     const roundedHeight = Math.ceil(height) + 8;
 
@@ -639,15 +1139,19 @@ export default function EditNoteScreen() {
     });
   };
 
-  const getEditorHeight = (editorKey: string, minHeight: number, maxHeight: number) =>
-    Math.min(Math.max(editorContentHeights[editorKey] ?? minHeight, minHeight), maxHeight);
+  const getEditorHeight = (editorKey: string, minHeight: number) =>
+    Math.max(editorContentHeights[editorKey] ?? minHeight, minHeight);
 
   const handleGlobalEntryChange = (dateKey: string, nextContent: string) => {
     allEntryDraftsRef.current = {
       ...allEntryDraftsRef.current,
       [dateKey]: nextContent
     };
+    hasPendingSaveRef.current = true;
     setSaveState("dirty");
+
+    const version = (allEntrySaveVersionsRef.current[dateKey] ?? 0) + 1;
+    allEntrySaveVersionsRef.current[dateKey] = version;
 
     const currentTimeout = allEntrySaveTimeoutsRef.current[dateKey];
 
@@ -658,11 +1162,24 @@ export default function EditNoteScreen() {
     allEntrySaveTimeoutsRef.current[dateKey] = setTimeout(async () => {
       const content = allEntryDraftsRef.current[dateKey] ?? "";
       setSaveState("saving");
-      await persistEntryChanges(
-        { [dateKey]: content },
-        latestDraftRef.current.title,
-        latestDraftRef.current.folderId
-      );
+      try {
+        await persistEntryChanges(
+          { [dateKey]: content },
+          latestDraftRef.current.title,
+          latestDraftRef.current.folderId
+        );
+      } catch {
+        if (allEntrySaveVersionsRef.current[dateKey] === version) {
+          hasPendingSaveRef.current = true;
+          setSaveState("dirty");
+        }
+        return;
+      }
+
+      if (allEntrySaveVersionsRef.current[dateKey] !== version) {
+        setSaveState("dirty");
+        return;
+      }
 
       const nextDrafts = { ...allEntryDraftsRef.current };
       delete nextDrafts[dateKey];
@@ -672,8 +1189,117 @@ export default function EditNoteScreen() {
       delete nextTimeouts[dateKey];
       allEntrySaveTimeoutsRef.current = nextTimeouts;
 
-      setSaveState(Object.keys(nextDrafts).length > 0 ? "dirty" : "saved");
+      const hasDrafts = Object.keys(nextDrafts).length > 0;
+      hasPendingSaveRef.current = hasDrafts || mainSaveTimeoutRef.current !== null;
+      setSaveState(hasPendingSaveRef.current ? "dirty" : "saved");
     }, 450);
+  };
+
+  const handleFocusedEditorChange = (editor: FocusedEditor, nextContent: string) => {
+    if (editor.target === "free") {
+      latestDraftRef.current = { ...latestDraftRef.current, freeContent: nextContent };
+      setFreeContent(nextContent);
+      return;
+    }
+
+    if (editor.target === "day") {
+      latestDraftRef.current = { ...latestDraftRef.current, content: nextContent };
+      setDayContent(nextContent);
+      return;
+    }
+
+    const dateKey = editor.dateKey;
+
+    if (!dateKey) {
+      return;
+    }
+
+    handleGlobalEntryChange(dateKey, nextContent);
+    setHistoricalEditorRevisions((current) => ({
+      ...current,
+      [dateKey]: (current[dateKey] ?? 0) + 1
+    }));
+  };
+
+  const handleOpenHistory = async () => {
+    setShowHistory(true);
+    setHistoryLoading(true);
+
+    try {
+      setNoteRevisions(await listNoteRevisions(note.id));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleRestoreRevision = async (revision: NoteRevision) => {
+    await flushPendingSave();
+    const currentNote = useNotesStore.getState().notes.find((entry) => entry.id === note.id) ?? note;
+    await queueNoteRevision(currentNote, true);
+    await updateNote(note.id, {
+      title: revision.title,
+      content: revision.content,
+      noteMode: revision.noteMode,
+      dailyEntries: revision.dailyEntries.map((entry) => ({ ...entry }))
+    });
+
+    const restoredEntries = revision.dailyEntries;
+    setTitle(revision.title);
+    setNoteMode(revision.noteMode);
+    setFreeContent(revision.noteMode === "free" ? revision.content : buildNoteContentFromEntries(restoredEntries));
+    setSelectedDateKey(todayKey);
+    setAllJumpDateKey(todayKey);
+    setDayContent(restoredEntries.find((entry) => entry.date === todayKey)?.content ?? "");
+    setViewMode(revision.noteMode === "free" ? "all" : "day");
+    setEditorContentHeights({});
+    setShowHistory(false);
+    setSaveState("saved");
+    void hapticSuccess();
+  };
+
+  const confirmRestoreRevision = (revision: NoteRevision) => {
+    void hapticWarning();
+    Alert.alert(
+      "Restaurer cette version ?",
+      `Version du ${new Date(revision.createdAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}. La version actuelle restera dans l'historique.`,
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "Restaurer", onPress: () => void handleRestoreRevision(revision) }
+      ]
+    );
+  };
+
+  const handleSelectOutlineDate = async (dateKey: string) => {
+    await handleChangeMode("all");
+    setAllJumpDateKey(dateKey);
+    setShowOutline(false);
+    void hapticSelection();
+    requestAnimationFrame(() => requestAnimationFrame(() => scrollToAllDate(dateKey)));
+  };
+
+  const handleOpenSearchResult = (result: NoteSearchResult) => {
+    setShowNoteSearch(false);
+    setFocusedEditor(result);
+    void hapticSelection();
+  };
+
+  const openLinkedNote = async (linkedNoteId: string) => {
+    await flushPendingSave();
+    void hapticSelection();
+    router.push(`/notes/${linkedNoteId}`);
+  };
+
+  const insertNoteLink = (linkedTitle: string) => {
+    const link = `[[${linkedTitle || "Sans titre"}]]`;
+
+    if (noteMode === "free") {
+      setFreeContent((current) => `${current}${current.trim() ? "\n" : ""}${link}`);
+    } else {
+      setDayContent((current) => `${current}${current.trim() ? "\n" : ""}${link}`);
+    }
+
+    setShowLinkPicker(false);
+    void hapticSuccess();
   };
 
   const renderModeButton = (mode: ViewMode, label: string, icon: keyof typeof Ionicons.glyphMap) => {
@@ -704,6 +1330,7 @@ export default function EditNoteScreen() {
 
   return (
     <ScreenContainer
+      automaticallyAdjustKeyboardInsets={false}
       floatingElement={
         showScrollTop ? (
           <Pressable
@@ -737,6 +1364,8 @@ export default function EditNoteScreen() {
       <View style={{ gap: theme.spacing.lg, paddingBottom: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Pressable
+            accessibilityLabel="Retour"
+            accessibilityRole="button"
             onPress={() => void handleBack()}
             style={{
               width: 44,
@@ -755,7 +1384,11 @@ export default function EditNoteScreen() {
           <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
             <Pressable
               accessibilityLabel={note.isPinned ? "Retirer l'epingle" : "Epingler la note"}
-              onPress={() => void togglePinned(note.id)}
+              accessibilityRole="button"
+              onPress={() => {
+                void hapticSelection();
+                void togglePinned(note.id);
+              }}
               style={{
                 width: 44,
                 height: 44,
@@ -771,7 +1404,12 @@ export default function EditNoteScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => void toggleFavorite(note.id)}
+              accessibilityLabel={note.isFavorite ? "Retirer des favoris" : "Ajouter aux favoris"}
+              accessibilityRole="button"
+              onPress={() => {
+                void hapticSelection();
+                void toggleFavorite(note.id);
+              }}
               style={{
                 width: 44,
                 height: 44,
@@ -790,6 +1428,28 @@ export default function EditNoteScreen() {
               />
             </Pressable>
             <Pressable
+              accessibilityLabel="Rechercher dans la note"
+              accessibilityRole="button"
+              onPress={() => {
+                setShowNoteSearch(true);
+                void hapticImpact();
+              }}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 16,
+                backgroundColor: palette.surface,
+                borderWidth: 1,
+                borderColor: palette.border,
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <Ionicons name="search-outline" size={18} color={theme.colors.text} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Plus d'actions"
+              accessibilityRole="button"
             onPress={() => {
               setShowMovePicker(false);
               setShowIconPicker(false);
@@ -840,14 +1500,16 @@ export default function EditNoteScreen() {
           </Pressable>
 
           <TextInput
+            accessibilityLabel="Titre de la note"
             value={title}
             onChangeText={setTitle}
             placeholder="Titre"
             placeholderTextColor={palette.placeholder}
             multiline
+            disableFullscreenUI
             scrollEnabled={false}
             selectionColor={EDITOR_SELECTION_COLOR}
-            cursorColor={EDITOR_SELECTION_COLOR}
+            cursorColor={EDITOR_CURSOR_COLOR}
             style={[
               theme.typography.h1,
               {
@@ -884,6 +1546,30 @@ export default function EditNoteScreen() {
           )}
         </View>
 
+        {note.sourceUrl ? (
+          <Pressable
+            accessibilityLabel="Ouvrir le lien source"
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(note.sourceUrl ?? "")}
+            style={({ pressed }) => ({
+              minHeight: 50,
+              borderRadius: 17,
+              backgroundColor: palette.surfaceMuted,
+              paddingHorizontal: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              opacity: pressed ? 0.82 : 1
+            })}
+          >
+            <View style={{ width: 32, height: 32, borderRadius: 12, backgroundColor: "#D8FAF1", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="link" size={15} color="#18A058" />
+            </View>
+            <Text style={[theme.typography.body, { color: palette.text, flex: 1 }]} numberOfLines={1}>{note.sourceUrl}</Text>
+            <Ionicons name="open-outline" size={16} color={palette.textMuted} />
+          </Pressable>
+        ) : null}
+
         {noteMode === "free" ? (
           <View style={{ gap: 18 }}>
             <View style={{ flexDirection: "row", gap: 8 }}>
@@ -910,26 +1596,7 @@ export default function EditNoteScreen() {
                 </Text>
               </Pressable>
 
-              <View
-                accessibilityLabel={saveStatus.label}
-                style={{
-                  minHeight: 42,
-                  paddingHorizontal: 12,
-                  borderRadius: 14,
-                  backgroundColor: palette.surface,
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6
-                }}
-              >
-                <Ionicons name="cloud" size={14} color={palette.text} />
-                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
-                  {saveState === "saving" ? "Sync..." : "Autosave"}
-                </Text>
-              </View>
+              <SaveStatusIndicator saveState={saveState} showSavedLabel={showSavedLabel} />
             </View>
 
             <View
@@ -941,31 +1608,41 @@ export default function EditNoteScreen() {
                 paddingTop: 22,
                 paddingBottom: 20,
                 borderWidth: 1,
-                borderColor: palette.border
+                borderColor: palette.border,
+                gap: 14
               }}
             >
-              <Text
-                style={[
-                  theme.typography.caption,
-                  { color: palette.textMuted, letterSpacing: 4, textTransform: "uppercase", marginBottom: 14, fontWeight: "900" }
-                ]}
-              >
-                Note libre
-              </Text>
+              <EditorSectionHeader
+                accentColor={palette.textMuted}
+                title="Note libre"
+                onExpand={() =>
+                  setFocusedEditor({
+                    content: freeContent,
+                    dateKey: null,
+                    key: "free",
+                    target: "free",
+                    title: title || "Note libre"
+                  })
+                }
+              />
               <TextInput
+                accessibilityLabel="Contenu de la note libre"
                 value={freeContent}
                 onChangeText={setFreeContent}
+                onContentSizeChange={(event) => rememberEditorContentHeight("free", event.nativeEvent.contentSize.height)}
                 placeholder="Ecris une note sans date..."
                 placeholderTextColor={palette.placeholder}
                 multiline
+                disableFullscreenUI
                 scrollEnabled={false}
                 selectionColor={EDITOR_SELECTION_COLOR}
-                cursorColor={EDITOR_SELECTION_COLOR}
+                cursorColor={EDITOR_CURSOR_COLOR}
                 textAlignVertical="top"
+                textBreakStrategy="simple"
                 style={[
                   theme.typography.body,
                   {
-                    minHeight: FREE_EDITOR_MIN_HEIGHT - 98,
+                    height: getEditorHeight("free", FREE_EDITOR_MIN_HEIGHT - 98),
                     color: palette.text,
                     fontSize: 17,
                     lineHeight: 32,
@@ -979,6 +1656,8 @@ export default function EditNoteScreen() {
           <View style={{ gap: 18 }}>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable
+                accessibilityLabel="Changer la date"
+                accessibilityRole="button"
                 onPress={handleOpenDateModal}
                 style={({ pressed }) => ({
                   minHeight: 42,
@@ -1021,32 +1700,10 @@ export default function EditNoteScreen() {
                 </Text>
               </Pressable>
 
-              <View
-                accessibilityLabel={saveStatus.label}
-                style={{
-                  minHeight: 42,
-                  paddingHorizontal: 12,
-                  borderRadius: 14,
-                  backgroundColor: palette.surface,
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6
-                }}
-              >
-                <Ionicons name="cloud" size={14} color={palette.text} />
-                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
-                  {saveState === "saving" ? "Sync..." : "Autosave"}
-                </Text>
-              </View>
+              <SaveStatusIndicator saveState={saveState} showSavedLabel={showSavedLabel} />
             </View>
 
             <View
-              onLayout={(event) => {
-                dayEditorYRef.current = event.nativeEvent.layout.y;
-              }}
               style={{
                 minHeight: 360,
                 borderRadius: 28,
@@ -1055,22 +1712,27 @@ export default function EditNoteScreen() {
                 paddingTop: 22,
                 paddingBottom: 20,
                 borderWidth: 1,
-                borderColor: palette.border
+                borderColor: palette.border,
+                gap: 14
               }}
             >
-              <Text
-                style={[
-                  theme.typography.caption,
-                  { color: "#7C4DFF", letterSpacing: 4, textTransform: "uppercase", marginBottom: 14 }
-                ]}
-              >
-                {selectedDateTitle}
-              </Text>
+              <EditorSectionHeader
+                accentColor="#4F6EF7"
+                title={selectedDateTitle}
+                onExpand={() =>
+                  setFocusedEditor({
+                    content: dayContent,
+                    dateKey: selectedDateKey,
+                    key: `day:${selectedDateKey}`,
+                    target: "day",
+                    title: selectedDateTitle
+                  })
+                }
+              />
               <TextInput
+                accessibilityLabel={`Contenu du ${selectedDateTitle}`}
                 value={dayContent}
                 onChangeText={setDayContent}
-                onFocus={() => scrollToEditor(dayEditorYRef.current)}
-                onPressIn={() => scrollToEditor(dayEditorYRef.current)}
                 onContentSizeChange={(event) => rememberEditorContentHeight(`day:${selectedDateKey}`, event.nativeEvent.contentSize.height)}
                 placeholder={
                   selectedDateKey === todayKey
@@ -1079,14 +1741,16 @@ export default function EditNoteScreen() {
                 }
                 placeholderTextColor={palette.placeholder}
                 multiline
+                disableFullscreenUI
                 scrollEnabled={false}
                 selectionColor={EDITOR_SELECTION_COLOR}
-                cursorColor={EDITOR_SELECTION_COLOR}
+                cursorColor={EDITOR_CURSOR_COLOR}
                 textAlignVertical="top"
+                textBreakStrategy="simple"
                 style={[
                   theme.typography.body,
                   {
-                    minHeight: Math.max(getEditorHeight(`day:${selectedDateKey}`, DAY_EDITOR_MIN_HEIGHT, DAY_EDITOR_MAX_HEIGHT), DAY_EDITOR_MIN_HEIGHT),
+                    height: getEditorHeight(`day:${selectedDateKey}`, DAY_EDITOR_MIN_HEIGHT),
                     color: palette.text,
                     fontSize: 17,
                     lineHeight: 32,
@@ -1100,7 +1764,12 @@ export default function EditNoteScreen() {
           <View style={{ gap: 18 }}>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable
-                onPress={handleOpenDateModal}
+                accessibilityLabel="Ouvrir le sommaire des journees"
+                accessibilityRole="button"
+                onPress={() => {
+                  setShowOutline(true);
+                  void hapticImpact();
+                }}
                 style={({ pressed }) => ({
                   minHeight: 42,
                   paddingHorizontal: 14,
@@ -1113,9 +1782,9 @@ export default function EditNoteScreen() {
                   opacity: pressed ? 0.82 : 1
                 })}
               >
-                <Ionicons name="calendar" size={13} color="#FFFFFF" />
+                <Ionicons name="list" size={13} color="#FFFFFF" />
                 <Text style={[theme.typography.label, { color: "#FFFFFF", fontSize: 14 }]} numberOfLines={1}>
-                  {allDateLabel}
+                  Sommaire
                 </Text>
               </Pressable>
 
@@ -1142,26 +1811,7 @@ export default function EditNoteScreen() {
                 </Text>
               </Pressable>
 
-              <View
-                accessibilityLabel={saveStatus.label}
-                style={{
-                  minHeight: 42,
-                  paddingHorizontal: 12,
-                  borderRadius: 14,
-                  backgroundColor: palette.surface,
-                  borderWidth: 1,
-                  borderColor: palette.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6
-                }}
-              >
-                <Ionicons name="cloud" size={14} color={palette.text} />
-                <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
-                  {saveState === "saving" ? "Sync..." : "Autosave"}
-                </Text>
-              </View>
+              <SaveStatusIndicator saveState={saveState} showSavedLabel={showSavedLabel} />
             </View>
 
             <View
@@ -1190,36 +1840,37 @@ export default function EditNoteScreen() {
                 borderBottomColor: palette.divider
               }}
             >
-              <Text
-                style={[
-                  theme.typography.caption,
-                  {
-                    color: palette.textMuted,
-                    letterSpacing: 2,
-                    textTransform: "uppercase",
-                    fontWeight: "900"
-                  }
-                ]}
-              >
-                {entryDateFormatter.format(fromDateKey(todayKey))}
-              </Text>
+              <EditorSectionHeader
+                accentColor={palette.textMuted}
+                title={entryDateFormatter.format(fromDateKey(todayKey))}
+                onExpand={() =>
+                  setFocusedEditor({
+                    content: dayContent,
+                    dateKey: todayKey,
+                    key: `all:${todayKey}`,
+                    target: "day",
+                    title: entryDateFormatter.format(fromDateKey(todayKey))
+                  })
+                }
+              />
               <TextInput
+                accessibilityLabel="Contenu d'aujourd'hui"
                 value={dayContent}
                 onChangeText={setDayContent}
-                onFocus={() => scrollToEditor(allCardYRef.current)}
-                onPressIn={() => scrollToEditor(allCardYRef.current)}
                 onContentSizeChange={(event) => rememberEditorContentHeight(`all:${todayKey}`, event.nativeEvent.contentSize.height)}
                 placeholder="Ecris quelque chose pour aujourd'hui..."
                 placeholderTextColor={palette.placeholder}
                 multiline
+                disableFullscreenUI
                 scrollEnabled={false}
                 selectionColor={EDITOR_SELECTION_COLOR}
-                cursorColor={EDITOR_SELECTION_COLOR}
+                cursorColor={EDITOR_CURSOR_COLOR}
                 textAlignVertical="top"
+                textBreakStrategy="simple"
                 style={[
                   theme.typography.body,
                   {
-                    minHeight: Math.max(getEditorHeight(`all:${todayKey}`, otherEntries.length > 0 ? 180 : 190, ALL_TODAY_EDITOR_MAX_HEIGHT), otherEntries.length > 0 ? 180 : 190),
+                    height: getEditorHeight(`all:${todayKey}`, otherEntries.length > 0 ? 180 : 190),
                     color: palette.text,
                     fontSize: 17,
                     lineHeight: 30,
@@ -1234,7 +1885,7 @@ export default function EditNoteScreen() {
 
               return (
                 <View
-                  key={entry.id}
+                  key={`${entry.id}:${historicalEditorRevisions[entry.date] ?? 0}`}
                   onLayout={(event) => {
                     allEntryYRef.current[entry.date] = event.nativeEvent.layout.y;
                   }}
@@ -1246,36 +1897,37 @@ export default function EditNoteScreen() {
                     borderBottomColor: palette.divider
                   }}
                 >
-                  <Text
-                    style={[
-                      theme.typography.caption,
-                      {
-                        color: palette.textMuted,
-                        letterSpacing: 2,
-                        textTransform: "uppercase",
-                        fontWeight: "900"
-                      }
-                    ]}
-                  >
-                    {entryDateFormatter.format(fromDateKey(entry.date))}
-                  </Text>
+                  <EditorSectionHeader
+                    accentColor={palette.textMuted}
+                    title={entryDateFormatter.format(fromDateKey(entry.date))}
+                    onExpand={() =>
+                      setFocusedEditor({
+                        content: allEntryDraftsRef.current[entry.date] ?? entry.content,
+                        dateKey: entry.date,
+                        key: `historical:${entry.date}`,
+                        target: "historical",
+                        title: entryDateFormatter.format(fromDateKey(entry.date))
+                      })
+                    }
+                  />
                   <TextInput
-                    defaultValue={entry.content}
+                    accessibilityLabel={`Contenu du ${entryDateFormatter.format(fromDateKey(entry.date))}`}
+                    defaultValue={allEntryDraftsRef.current[entry.date] ?? entry.content}
                     onChangeText={(nextContent) => handleGlobalEntryChange(entry.date, nextContent)}
-                    onFocus={() => scrollToEditor(allCardYRef.current + (allEntryYRef.current[entry.date] ?? 0))}
-                    onPressIn={() => scrollToEditor(allCardYRef.current + (allEntryYRef.current[entry.date] ?? 0))}
                     onContentSizeChange={(event) => rememberEditorContentHeight(`all:${entry.date}`, event.nativeEvent.contentSize.height)}
                     placeholder="Ecris quelque chose pour cette date..."
                     placeholderTextColor={palette.placeholder}
                     multiline
+                    disableFullscreenUI
                     scrollEnabled={false}
                     selectionColor={EDITOR_SELECTION_COLOR}
-                    cursorColor={EDITOR_SELECTION_COLOR}
+                    cursorColor={EDITOR_CURSOR_COLOR}
                     textAlignVertical="top"
+                    textBreakStrategy="simple"
                     style={[
                       theme.typography.body,
                       {
-                        minHeight: Math.max(getEditorHeight(`all:${entry.date}`, ALL_ENTRY_MIN_HEIGHT, ALL_ENTRY_MAX_HEIGHT), ALL_ENTRY_MIN_HEIGHT),
+                        height: getEditorHeight(`all:${entry.date}`, ALL_ENTRY_MIN_HEIGHT),
                         color: palette.text,
                         fontSize: 17,
                         lineHeight: 30,
@@ -1289,7 +1941,296 @@ export default function EditNoteScreen() {
             </View>
           </View>
         )}
+
+        <View style={{ gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={{ width: 28, height: 28, borderRadius: 11, backgroundColor: "#EFE6FF", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="git-network-outline" size={14} color="#7C4DFF" />
+              </View>
+              <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Notes liees</Text>
+            </View>
+            <Pressable accessibilityLabel="Ajouter un lien vers une note" onPress={() => setShowLinkPicker(true)} hitSlop={8}>
+              <Ionicons name="add-circle" size={24} color="#4F6EF7" />
+            </Pressable>
+          </View>
+
+          {outgoingLinks.length > 0 || backlinks.length > 0 ? (
+            <View style={{ borderRadius: 20, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 14 }}>
+              {outgoingLinks.map((link, index) => (
+                <Pressable
+                  key={`out-${link.title}`}
+                  accessibilityLabel={link.note ? `Ouvrir ${link.note.title}` : `Lien introuvable ${link.title}`}
+                  disabled={!link.note}
+                  onPress={() => link.note && void openLinkedNote(link.note.id)}
+                  style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: index < outgoingLinks.length - 1 || backlinks.length > 0 ? 1 : 0, borderBottomColor: palette.divider, opacity: pressed ? 0.8 : link.note ? 1 : 0.55 })}
+                >
+                  <Ionicons name={link.note ? "arrow-forward-circle-outline" : "alert-circle-outline"} size={19} color={link.note ? "#4F6EF7" : palette.textMuted} />
+                  <Text style={[theme.typography.label, { color: palette.text, flex: 1 }]} numberOfLines={1}>{link.note?.title || link.title}</Text>
+                  <Text style={[theme.typography.caption, { color: palette.textMuted }]}>{link.note ? "Lien" : "Introuvable"}</Text>
+                </Pressable>
+              ))}
+              {backlinks.map((backlink, index) => (
+                <Pressable
+                  key={`back-${backlink.id}`}
+                  accessibilityLabel={`Ouvrir la note qui cite ${backlink.title}`}
+                  onPress={() => void openLinkedNote(backlink.id)}
+                  style={({ pressed }) => ({ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: index < backlinks.length - 1 ? 1 : 0, borderBottomColor: palette.divider, opacity: pressed ? 0.8 : 1 })}
+                >
+                  <Ionicons name="return-down-back-outline" size={19} color="#18A058" />
+                  <Text style={[theme.typography.label, { color: palette.text, flex: 1 }]} numberOfLines={1}>{backlink.title || "Sans titre"}</Text>
+                  <Text style={[theme.typography.caption, { color: palette.textMuted }]}>Mentionne ici</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <Pressable
+              accessibilityLabel="Lier cette note a une autre"
+              onPress={() => setShowLinkPicker(true)}
+              style={({ pressed }) => ({ minHeight: 52, borderRadius: 18, backgroundColor: palette.surfaceMuted, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10, opacity: pressed ? 0.82 : 1 })}
+            >
+              <Ionicons name="link-outline" size={18} color="#7C4DFF" />
+              <Text style={[theme.typography.body, { color: palette.text, flex: 1 }]}>Relier cette note a une autre</Text>
+              <Ionicons name="chevron-forward" size={16} color={palette.textMuted} />
+            </Pressable>
+          )}
+        </View>
       </View>
+
+      <Modal visible={showLinkPicker} transparent animationType="slide" onRequestClose={() => setShowLinkPicker(false)}>
+        <Pressable onPress={() => setShowLinkPicker(false)} style={{ flex: 1, backgroundColor: "rgba(15, 27, 58, 0.22)", justifyContent: "flex-end" }}>
+          <Pressable
+            accessibilityViewIsModal
+            onPress={() => undefined}
+            style={{ maxHeight: "82%", backgroundColor: palette.surface, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 22, paddingTop: 12, paddingBottom: 28, gap: 16 }}
+          >
+            <View style={{ alignSelf: "center", width: 48, height: 5, borderRadius: 4, backgroundColor: palette.divider }} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ width: 46, height: 46, borderRadius: 17, backgroundColor: "#EFE6FF", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="link" size={20} color="#7C4DFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: palette.text, fontSize: 25, lineHeight: 31, fontWeight: "900" }}>Lier une note</Text>
+                <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]}>Ajoute un lien navigable dans le texte.</Text>
+              </View>
+            </View>
+            <ScrollView showsVerticalScrollIndicator indicatorStyle={palette.isDark ? "white" : "black"} keyboardShouldPersistTaps="handled">
+              <View style={{ gap: 8, paddingBottom: 4 }}>
+                {linkCandidates.map((candidate) => (
+                  <Pressable
+                    key={candidate.id}
+                    accessibilityLabel={`Lier la note ${candidate.title || "Sans titre"}`}
+                    onPress={() => insertNoteLink(candidate.title)}
+                    style={({ pressed }) => ({ minHeight: 58, borderRadius: 18, backgroundColor: palette.surfaceMuted, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.8 : 1 })}
+                  >
+                    <View style={{ width: 34, height: 34, borderRadius: 13, backgroundColor: getNoteIcon(candidate).backgroundColor, alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name={getNoteIcon(candidate).icon} size={16} color={getNoteIcon(candidate).color} />
+                    </View>
+                    <Text style={[theme.typography.label, { color: palette.text, flex: 1, fontWeight: "900" }]} numberOfLines={1}>{candidate.title || "Sans titre"}</Text>
+                    <Ionicons name="add-circle-outline" size={19} color="#4F6EF7" />
+                  </Pressable>
+                ))}
+                {linkCandidates.length === 0 ? <EmptyState title="Aucune autre note" description="Cree une seconde note pour pouvoir les relier." icon="link-outline" /> : null}
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showNoteSearch} transparent animationType="slide" onRequestClose={() => setShowNoteSearch(false)}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setShowNoteSearch(false)}
+          style={{ flex: 1, backgroundColor: "rgba(15, 27, 58, 0.22)", justifyContent: "flex-end" }}
+        >
+          <Pressable
+            accessibilityViewIsModal
+            onPress={() => undefined}
+            style={{
+              maxHeight: "84%",
+              backgroundColor: palette.surface,
+              borderTopLeftRadius: 30,
+              borderTopRightRadius: 30,
+              paddingHorizontal: 22,
+              paddingTop: 12,
+              paddingBottom: 28,
+              gap: 16
+            }}
+          >
+            <View style={{ alignSelf: "center", width: 48, height: 5, borderRadius: 4, backgroundColor: palette.divider }} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ width: 46, height: 46, borderRadius: 17, backgroundColor: "#E4ECFF", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="search" size={20} color="#4F6EF7" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: palette.text, fontSize: 25, lineHeight: 31, fontWeight: "900" }}>Rechercher</Text>
+                <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]}>Dans toute cette note</Text>
+              </View>
+            </View>
+            <View style={{ minHeight: 54, borderRadius: 18, backgroundColor: palette.surfaceMuted, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Ionicons name="search-outline" size={17} color={palette.textMuted} />
+              <TextInput
+                autoFocus
+                accessibilityLabel="Mot a rechercher dans la note"
+                value={noteSearchQuery}
+                onChangeText={setNoteSearchQuery}
+                placeholder="Rechercher un mot..."
+                placeholderTextColor={palette.placeholder}
+                returnKeyType="search"
+                selectionColor={EDITOR_SELECTION_COLOR}
+                cursorColor={EDITOR_CURSOR_COLOR}
+                style={[theme.typography.body, { flex: 1, color: palette.text, paddingVertical: 8 }]}
+              />
+              {noteSearchQuery ? (
+                <Pressable accessibilityLabel="Effacer la recherche" accessibilityRole="button" onPress={() => setNoteSearchQuery("")} hitSlop={8}>
+                  <Ionicons name="close-circle" size={21} color={palette.textMuted} />
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={[theme.typography.caption, { color: palette.textMuted, fontWeight: "900" }]}>
+              {noteSearchQuery.trim() ? `${searchResults.length} resultat${searchResults.length > 1 ? "s" : ""}` : "Saisis un mot pour commencer"}
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View style={{ gap: 10, paddingBottom: 4 }}>
+                {searchResults.map((result) => (
+                  <Pressable
+                    key={result.id}
+                    accessibilityLabel={`Ouvrir le resultat dans ${result.title}`}
+                    accessibilityRole="button"
+                    onPress={() => handleOpenSearchResult(result)}
+                    style={({ pressed }) => ({
+                      minHeight: 72,
+                      borderRadius: 18,
+                      backgroundColor: palette.surfaceMuted,
+                      paddingHorizontal: 14,
+                      paddingVertical: 11,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      opacity: pressed ? 0.8 : 1
+                    })}
+                  >
+                    <View style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: "#E4ECFF", alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name={result.target === "free" ? "document-text" : "calendar"} size={16} color="#4F6EF7" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900", marginBottom: 2 }]} numberOfLines={1}>{result.title}</Text>
+                      <SearchSnippet query={noteSearchQuery} text={result.snippet} />
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={palette.textMuted} />
+                  </Pressable>
+                ))}
+                {noteSearchQuery.trim() && searchResults.length === 0 ? (
+                  <View style={{ minHeight: 110, alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    <Ionicons name="search-outline" size={22} color={palette.textMuted} />
+                    <Text style={[theme.typography.body, { color: palette.textMuted }]}>Aucun resultat dans cette note</Text>
+                  </View>
+                ) : null}
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showOutline} transparent animationType="slide" onRequestClose={() => setShowOutline(false)}>
+        <Pressable onPress={() => setShowOutline(false)} style={{ flex: 1, backgroundColor: "rgba(15, 27, 58, 0.22)", justifyContent: "flex-end" }}>
+          <Pressable accessibilityViewIsModal onPress={() => undefined} style={{ maxHeight: "78%", backgroundColor: palette.surface, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 22, paddingTop: 12, paddingBottom: 28, gap: 16 }}>
+            <View style={{ alignSelf: "center", width: 48, height: 5, borderRadius: 4, backgroundColor: palette.divider }} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ width: 46, height: 46, borderRadius: 17, backgroundColor: "#D8FAF1", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="list" size={20} color="#18A058" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: palette.text, fontSize: 25, lineHeight: 31, fontWeight: "900" }}>Sommaire</Text>
+                <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]}>{entries.length} journee{entries.length > 1 ? "s" : ""}</Text>
+              </View>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ gap: 9, paddingBottom: 4 }}>
+                {[...entries].reverse().map((entry) => {
+                  const currentContent = entry.date === todayKey ? dayContent : allEntryDraftsRef.current[entry.date] ?? entry.content;
+                  const preview = currentContent.trim().replace(/\s+/g, " ") || "Journee vide";
+
+                  return (
+                    <Pressable
+                      key={entry.id}
+                      accessibilityLabel={`Aller au ${entryDateFormatter.format(fromDateKey(entry.date))}`}
+                      accessibilityRole="button"
+                      onPress={() => void handleSelectOutlineDate(entry.date)}
+                      style={({ pressed }) => ({ minHeight: 66, borderRadius: 18, backgroundColor: entry.date === allJumpDateKey ? "#E4ECFF" : palette.surfaceMuted, paddingHorizontal: 14, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.8 : 1 })}
+                    >
+                      <View style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" }}>
+                        <Ionicons name="calendar-outline" size={16} color={entry.date === allJumpDateKey ? "#4F6EF7" : palette.textMuted} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]} numberOfLines={1}>{entryDateFormatter.format(fromDateKey(entry.date))}</Text>
+                        <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 2 }]} numberOfLines={1}>{preview}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={palette.textMuted} />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showHistory} transparent animationType="slide" onRequestClose={() => setShowHistory(false)}>
+        <Pressable onPress={() => setShowHistory(false)} style={{ flex: 1, backgroundColor: "rgba(15, 27, 58, 0.22)", justifyContent: "flex-end" }}>
+          <Pressable accessibilityViewIsModal onPress={() => undefined} style={{ maxHeight: "80%", backgroundColor: palette.surface, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 22, paddingTop: 12, paddingBottom: 28, gap: 16 }}>
+            <View style={{ alignSelf: "center", width: 48, height: 5, borderRadius: 4, backgroundColor: palette.divider }} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ width: 46, height: 46, borderRadius: 17, backgroundColor: "#F0E6FF", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="time" size={20} color="#7C4DFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: palette.text, fontSize: 25, lineHeight: 31, fontWeight: "900" }}>Historique</Text>
+                <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 1 }]}>Versions locales recentes</Text>
+              </View>
+            </View>
+            {historyLoading ? (
+              <View style={{ minHeight: 140, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color="#7C4DFF" /></View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={{ gap: 9, paddingBottom: 4 }}>
+                  {noteRevisions.map((revision) => (
+                    <Pressable
+                      key={revision.id}
+                      accessibilityLabel={`Restaurer la version du ${new Date(revision.createdAt).toLocaleString("fr-FR")}`}
+                      accessibilityRole="button"
+                      onPress={() => confirmRestoreRevision(revision)}
+                      style={({ pressed }) => ({ minHeight: 72, borderRadius: 18, backgroundColor: palette.surfaceMuted, paddingHorizontal: 14, paddingVertical: 11, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.8 : 1 })}
+                    >
+                      <View style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" }}><Ionicons name="refresh" size={16} color="#7C4DFF" /></View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>{new Date(revision.createdAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</Text>
+                        <Text style={[theme.typography.caption, { color: palette.textMuted, marginTop: 2 }]} numberOfLines={1}>{revision.content.trim().replace(/\s+/g, " ") || revision.title || "Version vide"}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={palette.textMuted} />
+                    </Pressable>
+                  ))}
+                  {noteRevisions.length === 0 ? (
+                    <View style={{ minHeight: 130, alignItems: "center", justifyContent: "center", gap: 8 }}>
+                      <Ionicons name="time-outline" size={24} color={palette.textMuted} />
+                      <Text style={[theme.typography.body, { color: palette.textMuted, textAlign: "center" }]}>Une version apparaitra apres tes prochaines modifications.</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </ScrollView>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {focusedEditor ? (
+        <FocusedEditorModal
+          key={focusedEditor.key}
+          editor={focusedEditor}
+          onChange={(nextContent) => handleFocusedEditorChange(focusedEditor, nextContent)}
+          onClose={() => setFocusedEditor(null)}
+        />
+      ) : null}
 
       <Modal visible={showDateModal} transparent animationType="slide" onRequestClose={() => setShowDateModal(false)}>
         <Pressable
@@ -1651,6 +2592,7 @@ export default function EditNoteScreen() {
                   title={note.isFavorite ? "Retirer favori" : "Favori"}
                   subtitle="Retrouver cette note plus vite"
                   onPress={() => {
+                    void hapticSelection();
                     void toggleFavorite(note.id);
                     setShowActions(false);
                   }}
@@ -1663,6 +2605,7 @@ export default function EditNoteScreen() {
                   title={note.isPinned ? "Retirer l'epingle" : "Epingler"}
                   subtitle="Garder en haut de l'accueil"
                   onPress={() => {
+                    void hapticSelection();
                     void togglePinned(note.id);
                     setShowActions(false);
                   }}
@@ -1675,6 +2618,19 @@ export default function EditNoteScreen() {
                   title="Ajouter un rappel"
                   subtitle="Recevoir une notification"
                   onPress={() => Alert.alert("Rappel", "Les rappels arrivent bientot.")}
+                />
+
+                <NoteOptionRow
+                  icon="time-outline"
+                  iconColor="#7C4DFF"
+                  iconBackground="#F0E6FF"
+                  title="Historique"
+                  subtitle="Restaurer une version recente"
+                  onPress={() => {
+                    setShowActions(false);
+                    void hapticImpact();
+                    void handleOpenHistory();
+                  }}
                 />
 
                 <NoteOptionRow

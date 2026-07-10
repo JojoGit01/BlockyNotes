@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        store.ts
+ * @description Defines typed contracts for all Zustand application stores.
+ *
+ * @project     BlockyNotes
+ * @module      Core / Types
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import type { AppSettings, Folder, Note, Tag } from "@/types/models";
 
 export interface NotesState {

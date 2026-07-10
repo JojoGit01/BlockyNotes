@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        [id].tsx
+ * @description Renders a folder workspace with note insights, selection, and batch actions.
+ *
+ * @project     BlockyNotes
+ * @module      Application / Folders
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -17,6 +43,7 @@ import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { getAppPalette } from "@/theme/appPalette";
+import { hapticImpact, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import type { FolderIconKey, Note } from "@/types/models";
 
 type FolderModalMode = "options" | "rename" | "icon" | "move" | "archive" | "delete";
@@ -200,7 +227,14 @@ function FolderFavoriteNoteRow({
 
   return (
     <Pressable
-      onLongPress={() => (selectionMode ? onToggleSelection() : onQuickOpen())}
+      onLongPress={() => {
+        void hapticImpact();
+        if (selectionMode) {
+          onToggleSelection();
+          return;
+        }
+        onQuickOpen();
+      }}
       onPress={() => (selectionMode ? onToggleSelection() : onOpen())}
       style={({ pressed }) => ({
         minHeight: 60,
@@ -275,7 +309,14 @@ function FolderRegularNoteRow({
 
   return (
     <Pressable
-      onLongPress={() => (selectionMode ? onToggleSelection() : onQuickOpen())}
+      onLongPress={() => {
+        void hapticImpact();
+        if (selectionMode) {
+          onToggleSelection();
+          return;
+        }
+        onQuickOpen();
+      }}
       onPress={() => (selectionMode ? onToggleSelection() : onOpen())}
       style={({ pressed }) => ({
         minHeight: 72,
@@ -656,10 +697,12 @@ export default function FolderDetailsScreen() {
     }
 
     if (action === "favorite") {
+      void hapticSelection();
       await toggleFavorite(quickNote.id);
     }
 
     if (action === "pin") {
+      void hapticSelection();
       await togglePinned(quickNote.id);
     }
 
@@ -672,6 +715,7 @@ export default function FolderDetailsScreen() {
     }
 
     closeQuickNoteMenu();
+    void hapticSuccess();
   };
 
   const runQuickMove = async (folderId: string | null) => {
@@ -681,6 +725,7 @@ export default function FolderDetailsScreen() {
 
     await moveNote(quickNote.id, folderId);
     closeQuickNoteMenu();
+    void hapticSuccess();
   };
 
   const handleBulkMove = async (folderId: string | null) => {

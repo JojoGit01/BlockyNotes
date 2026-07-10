@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        ScreenContainer.tsx
+ * @description Provides safe-area, keyboard, scrolling, and background screen structure.
+ *
+ * @project     BlockyNotes
+ * @module      Components / UI
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { useSegments } from "expo-router";
 import { PropsWithChildren, ReactNode, Ref } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, ScrollViewProps, View } from "react-native";
@@ -7,6 +33,7 @@ import { AppBackground } from "@/components/ui/AppBackground";
 import { useTheme } from "@/hooks/useTheme";
 
 interface ScreenContainerProps extends PropsWithChildren {
+  automaticallyAdjustKeyboardInsets?: boolean;
   floatingElement?: ReactNode;
   onScroll?: ScrollViewProps["onScroll"];
   keyboardDismissMode?: ScrollViewProps["keyboardDismissMode"];
@@ -18,6 +45,7 @@ interface ScreenContainerProps extends PropsWithChildren {
 }
 
 export function ScreenContainer({
+  automaticallyAdjustKeyboardInsets = true,
   children,
   floatingElement,
   keyboardDismissMode,
@@ -57,7 +85,7 @@ export function ScreenContainer({
       >
         {scrollable ? (
           <ScrollView
-            automaticallyAdjustKeyboardInsets
+            automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
             contentContainerStyle={{
               flexGrow: 1,
               paddingBottom: scrollBottomPadding ?? theme.spacing.xxl + bottomSafeSpace + tabBarSafeSpace

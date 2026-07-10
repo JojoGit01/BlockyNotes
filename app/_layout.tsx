@@ -1,9 +1,36 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        _layout.tsx
+ * @description Initializes the application, root navigation, security lock, and native sharing bridge.
+ *
+ * @project     BlockyNotes
+ * @module      Application / Core
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, View } from "react-native";
 
 import { LockCodeModal } from "@/components/security/LockCodeModal";
+import { NativeShareIntentBridge } from "@/components/sharing/NativeShareIntentBridge";
 import { useBootstrap } from "@/hooks/useBootstrap";
 import { useTheme } from "@/hooks/useTheme";
 import { verifyLockCode } from "@/lib/security";
@@ -96,6 +123,7 @@ export default function RootLayout() {
           setLockError("Code incorrect.");
         }}
       />
+      <NativeShareIntentBridge enabled={!requiresAppUnlock} />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: theme.colors.surface },
@@ -106,6 +134,8 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings/about" options={{ headerShown: false }} />
+        <Stack.Screen name="notes/capture" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="replay" options={{ headerShown: false }} />
       </Stack>
     </>
   );

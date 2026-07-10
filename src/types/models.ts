@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        models.ts
+ * @description Defines persisted domain entities and application setting types.
+ *
+ * @project     BlockyNotes
+ * @module      Core / Types
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 export interface NoteDailyEntry {
   id: string;
   date: string;
@@ -43,6 +69,8 @@ export interface Note {
   iconKey?: NoteIconKey | null;
   folderId: string | null;
   tagIds: string[];
+  isInbox?: boolean;
+  sourceUrl?: string | null;
   isFavorite: boolean;
   isPinned?: boolean;
   isLocked?: boolean;
@@ -52,6 +80,16 @@ export interface Note {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+}
+
+export interface NoteRevision {
+  id: string;
+  noteId: string;
+  title: string;
+  content: string;
+  noteMode: NoteMode;
+  dailyEntries: NoteDailyEntry[];
+  createdAt: string;
 }
 
 export interface Folder {

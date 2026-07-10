@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        index.tsx
+ * @description Renders the notes library with Inbox, timelines, filters, search, and bulk actions.
+ *
+ * @project     BlockyNotes
+ * @module      Application / Notes
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
@@ -12,6 +38,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { sortNotes } from "@/lib/sort";
 import { getFolderIcon } from "@/services/folders/folderIcon";
 import { getNoteIcon } from "@/services/notes/noteIcon";
+import { extractHashtags, matchesSmartCollection, type SmartCollectionKey } from "@/services/notes/noteInsights";
 import { searchNotesService } from "@/services/notes/searchNotes";
 import { isNoteLocked } from "@/services/security/locks";
 import { useFoldersStore } from "@/store/useFoldersStore";
@@ -19,9 +46,10 @@ import { useNotesStore } from "@/store/useNotesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useUIStore } from "@/store/useUIStore";
 import { getAppPalette } from "@/theme/appPalette";
+import { hapticImpact, hapticSelection, hapticSuccess } from "@/lib/haptics";
 import type { Note, SortOrder } from "@/types/models";
 
-type NotesTab = "all" | "favorites" | "archived" | "deleted";
+type NotesTab = "all" | "inbox" | "favorites" | "archived" | "deleted";
 type NotesTimeline = "day" | "week" | "month";
 type NoteListAction = {
   label: string;
@@ -187,6 +215,7 @@ function NotesListItem({
   const elementCount = noteElementCount(note);
   const contentPreview = note.content.trim().split(/\r?\n/).find(Boolean);
   const noteMode = note.noteMode ?? "day";
+  const hashtags = extractHashtags(`${note.title}\n${note.content}`);
   const subtitle = locked
     ? "Contenu masque - code requis"
     : noteMode === "free" && contentPreview
@@ -198,12 +227,14 @@ function NotesListItem({
         : noteDateLabel(note.updatedAt);
   const chips = [
     noteMode === "free" ? "Libre" : "Journal",
+    note.isInbox ? "Inbox" : null,
     folderName,
     locked ? "Securisee" : null,
     note.isFavorite ? "Favori" : null,
     note.isPinned ? "Epinglee" : null,
     note.isArchived ? "Archivee" : null,
-    note.isDeleted ? "Corbeille" : null
+    note.isDeleted ? "Corbeille" : null,
+    hashtags[0] ? `#${hashtags[0]}` : null
   ].filter(Boolean) as string[];
 
   return (
@@ -256,6 +287,8 @@ function NotesListItem({
                     icon={
                       chip === "Favori"
                         ? "star"
+                        : chip === "Inbox"
+                          ? "mail-unread"
                         : chip === "Epinglee"
                           ? "sparkles"
                           : chip === "Libre"
@@ -345,15 +378,25 @@ export default function NotesScreen() {
   const [quickNoteMode, setQuickNoteMode] = useState<QuickNoteModalMode>("actions");
   const [activeTab, setActiveTab] = useState<NotesTab>("all");
   const [activeTimeline, setActiveTimeline] = useState<NotesTimeline>("day");
+  const [activeSmartCollection, setActiveSmartCollection] = useState<SmartCollectionKey>("none");
   const foldersById = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const filteredNotes = useMemo(() => {
     const visibleNotes = notes.filter((note) => {
+      const matchesCollection =
+        activeSmartCollection === "locked"
+          ? isNoteLocked(note, note.folderId ? foldersById.get(note.folderId) : undefined, settings)
+          : matchesSmartCollection(note, activeSmartCollection);
+
       if (selectedFolderId && note.folderId !== selectedFolderId) {
         return false;
       }
 
       if (activeTab === "all") {
-        return !note.isArchived && !note.isDeleted;
+        return !note.isArchived && !note.isDeleted && matchesCollection;
+      }
+
+      if (activeTab === "inbox") {
+        return Boolean(note.isInbox && !note.isArchived && !note.isDeleted && matchesCollection);
       }
 
       if (activeTab === "favorites" && !note.isFavorite) {
@@ -361,7 +404,7 @@ export default function NotesScreen() {
       }
 
       if (activeTab === "favorites") {
-        return !note.isArchived && !note.isDeleted;
+        return !note.isArchived && !note.isDeleted && matchesCollection;
       }
 
       if (activeTab === "archived") {
@@ -382,20 +425,20 @@ export default function NotesScreen() {
 
       return a.isPinned ? -1 : 1;
     });
-  }, [activeTab, notes, searchQuery, selectedFolderId, sortOrder]);
+  }, [activeSmartCollection, activeTab, foldersById, notes, searchQuery, selectedFolderId, settings, sortOrder]);
   const groupedNotes = useMemo(() => {
-    const groups: NotesGroup[] = [];
+    const groupsByKey = new Map<string, NotesGroup>();
 
     filteredNotes.forEach((note) => {
       const key = getTimelineGroupKey(note.updatedAt, activeTimeline);
-      const existingGroup = groups.find((group) => group.key === key);
+      const existingGroup = groupsByKey.get(key);
 
       if (existingGroup) {
         existingGroup.data.push(note);
         return;
       }
 
-      groups.push({
+      groupsByKey.set(key, {
         key,
         label: getTimelineGroupLabel(note.updatedAt, activeTimeline),
         data: [note],
@@ -403,7 +446,9 @@ export default function NotesScreen() {
       });
     });
 
-    return groups.sort((a, b) => (sortOrder === "updatedAt-asc" ? a.sortTime - b.sortTime : b.sortTime - a.sortTime));
+    return [...groupsByKey.values()].sort((a, b) =>
+      sortOrder === "updatedAt-asc" ? a.sortTime - b.sortTime : b.sortTime - a.sortTime
+    );
   }, [activeTimeline, filteredNotes, sortOrder]);
   const floatingButtonBottom = insets.bottom + 90;
   const archivedNotes = useMemo(() => notes.filter((note) => note.isArchived && !note.isDeleted), [notes]);
@@ -416,6 +461,7 @@ export default function NotesScreen() {
   };
 
   const openQuickNoteMenu = (note: Note) => {
+    void hapticImpact();
     setQuickNote(note);
     setQuickNoteMode("actions");
   };
@@ -438,7 +484,10 @@ export default function NotesScreen() {
         background: folderIcon.backgroundColor
       };
     })
-  ].filter((destination) => destination.id !== quickNote?.folderId);
+  ].filter(
+    (destination) =>
+      destination.id !== quickNote?.folderId || Boolean(quickNote?.isInbox && destination.id === null)
+  );
 
   const runQuickAction = async (action: "favorite" | "pin" | "archive" | "delete") => {
     if (!quickNote) {
@@ -446,10 +495,12 @@ export default function NotesScreen() {
     }
 
     if (action === "favorite") {
+      void hapticSelection();
       await toggleFavorite(quickNote.id);
     }
 
     if (action === "pin") {
+      void hapticSelection();
       await togglePinned(quickNote.id);
     }
 
@@ -462,6 +513,7 @@ export default function NotesScreen() {
     }
 
     closeQuickNoteMenu();
+    void hapticSuccess();
   };
 
   const runQuickMove = async (folderId: string | null) => {
@@ -471,17 +523,21 @@ export default function NotesScreen() {
 
     await moveNote(quickNote.id, folderId);
     closeQuickNoteMenu();
+    void hapticSuccess();
   };
 
   const tabs: { key: NotesTab; label: string; icon: keyof typeof Ionicons.glyphMap; color: string; background: string }[] = [
     { key: "all", label: "Toutes", icon: "albums-outline", color: "#4F6EF7", background: "#E4ECFF" },
+    { key: "inbox", label: "Inbox", icon: "mail-unread-outline", color: "#0F766E", background: "#D8FAF1" },
     { key: "favorites", label: "Favoris", icon: "star", color: "#F59E0B", background: "#FFF1DC" },
     { key: "archived", label: "Archives", icon: "archive", color: "#0F1B3A", background: "#E9ECF3" },
     { key: "deleted", label: "Corbeille", icon: "trash-outline", color: "#FF3434", background: "#FFE6E6" }
   ];
   const activeTabMeta = tabs.find((tab) => tab.key === activeTab) ?? tabs[0];
   const activeTabDescription =
-    activeTab === "favorites"
+    activeTab === "inbox"
+      ? "Tes captures rapides, pretes a etre classees."
+      : activeTab === "favorites"
       ? "Tes notes favorites, separees des archives."
       : activeTab === "archived"
         ? "Notes rangees hors de la liste principale."
@@ -675,6 +731,21 @@ export default function NotesScreen() {
     { label: "Plus anciennes", value: "updatedAt-asc", icon: "arrow-up", color: "#18A058", background: "#D8FAF1" },
     { label: "Titre A-Z", value: "title-asc", icon: "text", color: "#F97316", background: "#FFF1DC" }
   ];
+  const smartCollections: {
+    key: SmartCollectionKey;
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    color: string;
+    background: string;
+  }[] = [
+    { key: "none", label: "Aucune", icon: "apps-outline", color: "#4F6EF7", background: "#E4ECFF" },
+    { key: "week", label: "Cette semaine", icon: "calendar-outline", color: "#18A058", background: "#D8FAF1" },
+    { key: "unfiled", label: "Sans dossier", icon: "folder-open-outline", color: "#F97316", background: "#FFF1DC" },
+    { key: "locked", label: "Securisees", icon: "lock-closed-outline", color: "#4F6EF7", background: "#E4ECFF" },
+    { key: "stale", label: "A reprendre", icon: "time-outline", color: "#7C4DFF", background: "#EFE6FF" },
+    { key: "linked", label: "Liees", icon: "link-outline", color: "#0F766E", background: "#D8FAF1" },
+    { key: "tagged", label: "Avec tags", icon: "pricetag-outline", color: "#E11D48", background: "#FFF0F7" }
+  ];
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -683,12 +754,12 @@ export default function NotesScreen() {
         sections={groupedNotes}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
-        initialNumToRender={8}
-        maxToRenderPerBatch={8}
-        removeClippedSubviews
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        removeClippedSubviews={false}
         scrollEventThrottle={16}
         stickySectionHeadersEnabled={false}
-        windowSize={7}
+        windowSize={11}
         contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: floatingButtonBottom + 82 }}
         ListHeaderComponent={
           <View style={{ gap: 12, marginBottom: groupedNotes.length > 0 ? 10 : 0 }}>
@@ -748,7 +819,12 @@ export default function NotesScreen() {
                 <Pressable
                   key={tab.key}
                   accessibilityLabel={tab.label}
-                  onPress={() => setActiveTab(tab.key)}
+                  onPress={() => {
+                    setActiveTab(tab.key);
+                    if (tab.key === "inbox") {
+                      setSelectedFolder(null);
+                    }
+                  }}
                   style={({ pressed }) => ({
                     flex: 1,
                     borderRadius: 15,
@@ -788,7 +864,18 @@ export default function NotesScreen() {
               placeholderTextColor={palette.placeholder}
               style={[theme.typography.body, { flex: 1, color: palette.text, paddingVertical: 8 }]}
             />
+            {searchQuery.trim() ? (
+              <Pressable
+                accessibilityLabel="Effacer la recherche"
+                onPress={() => setSearchQuery("")}
+                hitSlop={8}
+                style={{ width: 30, height: 30, borderRadius: 12, backgroundColor: "#FFE6E6", alignItems: "center", justifyContent: "center" }}
+              >
+                <Ionicons name="close" size={16} color="#FF3434" />
+              </Pressable>
+            ) : null}
             <Pressable
+              accessibilityLabel="Ouvrir les filtres"
               onPress={() => setShowFilters(true)}
               style={({ pressed }) => ({
                 width: 34,
@@ -814,7 +901,9 @@ export default function NotesScreen() {
           <EmptyState
             title="Aucune note"
             description={
-              activeTab === "favorites"
+              activeTab === "inbox"
+                ? "Utilise la capture rapide ou partage un texte vers BlockyNotes."
+                : activeTab === "favorites"
                 ? "Ajoute des favoris pour les retrouver ici."
                 : activeTab === "archived"
                   ? "Archive une note depuis l'editeur pour la retrouver ici."
@@ -884,8 +973,8 @@ export default function NotesScreen() {
               borderTopRightRadius: 30,
               paddingHorizontal: 24,
               paddingTop: 12,
-              paddingBottom: insets.bottom + 26,
-              gap: theme.spacing.lg
+              paddingBottom: 0,
+              maxHeight: "94%"
             }}
           >
             <View
@@ -898,6 +987,12 @@ export default function NotesScreen() {
                 marginBottom: 2
               }}
             />
+            <ScrollView
+              showsVerticalScrollIndicator
+              indicatorStyle={palette.isDark ? "white" : "black"}
+              contentContainerStyle={{ gap: theme.spacing.lg, paddingBottom: insets.bottom + 26 }}
+              keyboardShouldPersistTaps="handled"
+            >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1 }}>
                 <View
@@ -922,6 +1017,7 @@ export default function NotesScreen() {
                   onPress={() => {
                     setSelectedFolder(null);
                     setActiveTimeline("day");
+                    setActiveSmartCollection("none");
                   }}
                   hitSlop={8}
                   style={{
@@ -951,6 +1047,43 @@ export default function NotesScreen() {
                   <Ionicons name="close" size={18} color={palette.text} />
                 </Pressable>
               </View>
+            </View>
+
+            <View style={{ gap: theme.spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 26, height: 26, borderRadius: 10, backgroundColor: "#EFE6FF", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="sparkles" size={14} color="#7C4DFF" />
+                </View>
+                <Text style={[theme.typography.caption, { color: palette.textMuted, letterSpacing: 1.2, textTransform: "uppercase", fontWeight: "900" }]}>Collections intelligentes</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9, paddingRight: 8 }}>
+                {smartCollections.map((collection) => {
+                  const isActive = activeSmartCollection === collection.key;
+
+                  return (
+                    <Pressable
+                      key={collection.key}
+                      accessibilityLabel={`Collection ${collection.label}`}
+                      onPress={() => setActiveSmartCollection(collection.key)}
+                      style={({ pressed }) => ({
+                        minHeight: 48,
+                        borderRadius: 18,
+                        backgroundColor: isActive ? navy : palette.surfaceMuted,
+                        paddingHorizontal: 12,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
+                        opacity: pressed ? 0.84 : 1
+                      })}
+                    >
+                      <View style={{ width: 30, height: 30, borderRadius: 12, backgroundColor: isActive ? "rgba(255,255,255,0.14)" : collection.background, alignItems: "center", justifyContent: "center" }}>
+                        <Ionicons name={collection.icon} size={14} color={isActive ? "#FFFFFF" : collection.color} />
+                      </View>
+                      <Text style={[theme.typography.label, { color: isActive ? "#FFFFFF" : palette.text, fontWeight: "900" }]}>{collection.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             <View style={{ gap: theme.spacing.sm }}>
@@ -1203,6 +1336,7 @@ export default function NotesScreen() {
                 );
               })}
             </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1723,7 +1857,8 @@ export default function NotesScreen() {
         </Pressable>
       ) : (
         <Pressable
-          onPress={() => router.push("/notes/new")}
+          accessibilityLabel={activeTab === "inbox" ? "Capture rapide" : "Creer une note"}
+          onPress={() => router.push(activeTab === "inbox" ? "/notes/capture" : "/notes/new")}
           style={({ pressed }) => ({
             position: "absolute",
             right: 24,

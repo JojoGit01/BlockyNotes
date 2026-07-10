@@ -22,12 +22,29 @@
       },
       "edgeToEdgeEnabled": false
     },
+    "ios": {
+      "bundleIdentifier": "com.blockynotes.app",
+      "supportsTablet": true
+    },
     "experiments": {
       "typedRoutes": true
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsText": true,
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1
+          },
+          "androidIntentFilters": [
+            "text/*"
+          ]
+        }
+      ]
     ],
     "extra": {
       "router": {},

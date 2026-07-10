@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        AppBackground.tsx
+ * @description Renders the shared application background treatment.
+ *
+ * @project     BlockyNotes
+ * @module      Components / UI
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-05-05
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { DimensionValue, StyleSheet, View } from "react-native";
 
 import { useTheme } from "@/hooks/useTheme";

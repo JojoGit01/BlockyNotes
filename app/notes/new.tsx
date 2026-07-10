@@ -1,9 +1,36 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        new.tsx
+ * @description Implements note creation, templates, note modes, and automatic draft persistence.
+ *
+ * @project     BlockyNotes
+ * @module      Application / Notes
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { SaveStatusIndicator } from "@/components/ui/SaveStatusIndicator";
 import { addDays, fromDateKey, toDateKey } from "@/lib/date";
 import { useTheme } from "@/hooks/useTheme";
 import { buildNoteContentFromEntries, upsertDailyEntry } from "@/services/notes/dailyEntries";
@@ -17,6 +44,8 @@ import type { Note, NoteDailyEntry, NoteIconKey, NoteMode } from "@/types/models
 type ViewMode = "day" | "all";
 
 const dayLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+const EDITOR_SELECTION_COLOR = "#4F6EF7";
+const EDITOR_CURSOR_COLOR = "#4F6EF7";
 const entryDateFormatter = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
   day: "numeric",
@@ -67,17 +96,16 @@ export default function NewNoteScreen() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saving");
+  const [showSavedLabel, setShowSavedLabel] = useState(false);
   const [selectedDateKey, setSelectedDateKey] = useState(toDateKey());
   const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [noteMode, setNoteMode] = useState<NoteMode>("day");
+  const [editorContentHeights, setEditorContentHeights] = useState<Record<string, number>>({});
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const createInFlightRef = useRef(false);
-  const screenScrollRef = useRef<ScrollView | null>(null);
-  const dayEditorYRef = useRef(0);
-  const globalEditorYRef = useRef(0);
   const latestEntriesRef = useRef<NoteDailyEntry[]>([]);
   const draftSnapshotRef = useRef<DraftSnapshot>({
     content: "",
@@ -172,6 +200,17 @@ export default function NewNoteScreen() {
       title
     };
   });
+
+  useEffect(() => {
+    if (saveState !== "saved") {
+      setShowSavedLabel(false);
+      return;
+    }
+
+    setShowSavedLabel(true);
+    const timeout = setTimeout(() => setShowSavedLabel(false), 1500);
+    return () => clearTimeout(timeout);
+  }, [saveState]);
 
   useEffect(
     () => () => {
@@ -475,20 +514,35 @@ export default function NewNoteScreen() {
     await goBack();
   };
 
-  const scrollToEditor = (targetY: number) => {
-    requestAnimationFrame(() => {
-      screenScrollRef.current?.scrollTo({ y: Math.max(targetY - 20, 0), animated: true });
-    });
+  const rememberEditorContentHeight = (editorKey: string, height: number) => {
+    const roundedHeight = Math.ceil(height) + 8;
+
+    setEditorContentHeights((currentHeights) =>
+      currentHeights[editorKey] === roundedHeight
+        ? currentHeights
+        : { ...currentHeights, [editorKey]: roundedHeight }
+    );
   };
+
+  const getEditorHeight = (editorKey: string, minHeight: number) =>
+    Math.max(editorContentHeights[editorKey] ?? minHeight, minHeight);
 
   const calendarMonthLabel = calendarMonthFormatter.format(calendarMonth);
   const formattedCalendarMonth = `${calendarMonthLabel.charAt(0).toUpperCase()}${calendarMonthLabel.slice(1)}`;
 
   return (
-    <ScreenContainer scrollable scrollBottomPadding={12} scrollRef={screenScrollRef}>
+    <ScreenContainer
+      automaticallyAdjustKeyboardInsets={false}
+      keyboardDismissMode="none"
+      keyboardShouldPersistTaps="always"
+      scrollable
+      scrollBottomPadding={12}
+    >
       <View style={{ gap: theme.spacing.lg, paddingBottom: 12 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Pressable
+            accessibilityLabel="Retour"
+            accessibilityRole="button"
             onPress={() => void goBack()}
             style={{
               width: 44,
@@ -580,12 +634,16 @@ export default function NewNoteScreen() {
           </Pressable>
 
           <TextInput
+            accessibilityLabel="Titre de la nouvelle note"
             value={title}
             onChangeText={setTitle}
             placeholder="Nouvelle note"
             placeholderTextColor={palette.placeholder}
             multiline
+            disableFullscreenUI
             scrollEnabled={false}
+            selectionColor={EDITOR_SELECTION_COLOR}
+            cursorColor={EDITOR_CURSOR_COLOR}
             style={[
               theme.typography.h1,
               {
@@ -729,28 +787,7 @@ export default function NewNoteScreen() {
             </Text>
           </Pressable>
 
-          <View
-            onLayout={(event) => {
-              dayEditorYRef.current = event.nativeEvent.layout.y;
-            }}
-            style={{
-              minHeight: 42,
-              paddingHorizontal: 12,
-              borderRadius: 14,
-              backgroundColor: palette.surface,
-              borderWidth: 1,
-              borderColor: palette.border,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6
-            }}
-          >
-            <Ionicons name="cloud" size={14} color={palette.text} />
-            <Text style={[theme.typography.label, { color: palette.text, fontSize: 14 }]} numberOfLines={1}>
-              {saveState === "saving" ? "Sync..." : "Autosave"}
-            </Text>
-          </View>
+          <SaveStatusIndicator saveState={saveState} showSavedLabel={showSavedLabel} />
         </View>
 
         {noteMode === "free" ? (
@@ -775,18 +812,23 @@ export default function NewNoteScreen() {
               Note libre
             </Text>
             <TextInput
+              accessibilityLabel="Contenu de la note libre"
               value={content}
               onChangeText={setContent}
-              onFocus={() => scrollToEditor(dayEditorYRef.current)}
+              onContentSizeChange={(event) => rememberEditorContentHeight("free", event.nativeEvent.contentSize.height)}
               placeholder="Ecris une note sans date..."
               placeholderTextColor={palette.placeholder}
               multiline
+              disableFullscreenUI
               scrollEnabled={false}
+              selectionColor={EDITOR_SELECTION_COLOR}
+              cursorColor={EDITOR_CURSOR_COLOR}
               textAlignVertical="top"
+              textBreakStrategy="simple"
               style={[
                 theme.typography.body,
                 {
-                  minHeight: 330,
+                  height: getEditorHeight("free", 330),
                   color: palette.text,
                   fontSize: 17,
                   lineHeight: 32,
@@ -817,9 +859,10 @@ export default function NewNoteScreen() {
               {selectedDateTitle}
             </Text>
             <TextInput
+              accessibilityLabel={`Contenu du ${selectedDateTitle}`}
               value={content}
               onChangeText={setContent}
-              onFocus={() => scrollToEditor(dayEditorYRef.current)}
+              onContentSizeChange={(event) => rememberEditorContentHeight(`day:${selectedDateKey}`, event.nativeEvent.contentSize.height)}
               placeholder={
                 selectedDateKey === todayKey
                   ? "Ecris quelque chose pour aujourd'hui..."
@@ -827,12 +870,16 @@ export default function NewNoteScreen() {
               }
               placeholderTextColor={palette.placeholder}
               multiline
+              disableFullscreenUI
               scrollEnabled={false}
+              selectionColor={EDITOR_SELECTION_COLOR}
+              cursorColor={EDITOR_CURSOR_COLOR}
               textAlignVertical="top"
+              textBreakStrategy="simple"
               style={[
                 theme.typography.body,
                 {
-                  minHeight: 330,
+                  height: getEditorHeight(`day:${selectedDateKey}`, 330),
                   color: palette.text,
                   fontSize: 17,
                   lineHeight: 32,
@@ -843,9 +890,6 @@ export default function NewNoteScreen() {
           </View>
         ) : (
           <View
-            onLayout={(event) => {
-              globalEditorYRef.current = event.nativeEvent.layout.y;
-            }}
             style={{
               minHeight: otherEntries.length > 0 ? 420 : 260,
               borderRadius: 28,
@@ -874,21 +918,26 @@ export default function NewNoteScreen() {
                 {entryDateFormatter.format(fromDateKey(todayKey))}
               </Text>
               <TextInput
+                accessibilityLabel="Contenu d'aujourd'hui"
                 value={selectedDateKey === todayKey ? content : latestEntriesRef.current.find((entry) => entry.date === todayKey)?.content ?? ""}
                 onChangeText={(nextContent) => {
                   setSelectedDateKey(todayKey);
                   setContent(nextContent);
                 }}
-                onFocus={() => scrollToEditor(globalEditorYRef.current)}
+                onContentSizeChange={(event) => rememberEditorContentHeight(`all:${todayKey}`, event.nativeEvent.contentSize.height)}
                 placeholder="Ecris quelque chose pour aujourd'hui..."
                 placeholderTextColor={palette.placeholder}
                 multiline
+                disableFullscreenUI
                 scrollEnabled={false}
+                selectionColor={EDITOR_SELECTION_COLOR}
+                cursorColor={EDITOR_CURSOR_COLOR}
                 textAlignVertical="top"
+                textBreakStrategy="simple"
                 style={[
                   theme.typography.body,
                   {
-                    minHeight: otherEntries.length > 0 ? 180 : 190,
+                    height: getEditorHeight(`all:${todayKey}`, otherEntries.length > 0 ? 180 : 190),
                     color: palette.text,
                     fontSize: 17,
                     lineHeight: 32,

@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        index.tsx
+ * @description Renders the home dashboard, global search, statistics, and Replay entry point.
+ *
+ * @project     BlockyNotes
+ * @module      Application / Navigation
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, type ReactNode } from "react";
@@ -10,6 +36,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
 import { getFolderIcon } from "@/services/folders/folderIcon";
 import { getNoteIcon } from "@/services/notes/noteIcon";
+import { getReplayInsights } from "@/services/notes/noteInsights";
 import { searchNotesService } from "@/services/notes/searchNotes";
 import { isNoteLocked } from "@/services/security/locks";
 import { useFoldersStore } from "@/store/useFoldersStore";
@@ -283,6 +310,7 @@ export default function DashboardScreen() {
     [activeNotes]
   );
   const favoriteNotesCount = useMemo(() => activeNotes.filter((note) => note.isFavorite).length, [activeNotes]);
+  const replayInsights = useMemo(() => getReplayInsights(notes), [notes]);
   const recentNotes = useMemo(
     () =>
       activeNotes
@@ -440,6 +468,39 @@ export default function DashboardScreen() {
             <StatItem icon="folder" color="#0F766E" background="#D8FAF1" label="Dossiers" value={folders.length + 1} />
           </View>
 
+          <Pressable
+            accessibilityLabel="Ouvrir Blocky Replay"
+            accessibilityRole="button"
+            onPress={() => router.push("/replay")}
+            style={({ pressed }) => ({
+              minHeight: 60,
+              borderRadius: 20,
+              backgroundColor: palette.surface,
+              paddingHorizontal: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              opacity: pressed ? 0.84 : 1,
+              shadowColor: palette.shadow,
+              shadowOpacity: 0.05,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 4
+            })}
+          >
+            <View style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: "#EFE6FF", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="sparkles" size={18} color="#7C4DFF" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[theme.typography.label, { color: palette.text, fontWeight: "900" }]}>Blocky Replay</Text>
+              <Text style={[theme.typography.caption, { color: palette.textMuted }]} numberOfLines={1}>
+                {replayInsights.touchedThisWeek} note{replayInsights.touchedThisWeek > 1 ? "s" : ""} cette semaine
+                {replayInsights.inboxCount ? ` - ${replayInsights.inboxCount} a classer` : ""}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color={palette.textMuted} />
+          </Pressable>
+
           <View
             style={{
               minHeight: 54,
@@ -575,7 +636,7 @@ export default function DashboardScreen() {
                     iconBackgroundColor="#D8FAF1"
                     iconColor="#18A058"
                     actionLabel="Creer une note"
-                    onActionPress={() => router.push("/notes/new")}
+                    onActionPress={() => router.push("/notes/capture")}
                   />
                 )}
               </View>
@@ -585,7 +646,8 @@ export default function DashboardScreen() {
       </ScrollView>
 
       <Pressable
-        onPress={() => router.push("/notes/new")}
+        accessibilityLabel="Capture rapide"
+        onPress={() => router.push("/notes/capture")}
         style={({ pressed }) => ({
           position: "absolute",
           right: 24,

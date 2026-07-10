@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        index.tsx
+ * @description Renders the folder library with search, filters, statistics, and quick actions.
+ *
+ * @project     BlockyNotes
+ * @module      Application / Folders
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-03-13
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
@@ -17,6 +43,7 @@ import { useFoldersStore } from "@/store/useFoldersStore";
 import { useNotesStore } from "@/store/useNotesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { getAppPalette } from "@/theme/appPalette";
+import { hapticImpact } from "@/lib/haptics";
 import type { Folder, FolderIconKey } from "@/types/models";
 
 type FolderModalMode = "options" | "rename" | "icon" | "move" | "archive" | "delete";
@@ -89,7 +116,10 @@ function FolderTile({
 
   return (
     <Pressable
-      onLongPress={() => onOpenOptions(folder)}
+      onLongPress={() => {
+        void hapticImpact();
+        onOpenOptions(folder);
+      }}
       onPress={() => router.push({ pathname: "/folders/[id]", params: { id: folder.id } })}
       style={({ pressed }) => ({
         width: "48%",
@@ -180,7 +210,10 @@ function PersonalFolderTile({ notesCount, onOpenOptions }: { notesCount: number;
 
   return (
     <Pressable
-      onLongPress={onOpenOptions}
+      onLongPress={() => {
+        void hapticImpact();
+        onOpenOptions();
+      }}
       onPress={() => router.push({ pathname: "/folders/[id]", params: { id: "personal" } })}
       style={({ pressed }) => ({
         width: "48%",

@@ -1,3 +1,29 @@
+/**
+ * ============================================================================
+ *
+ *                         JDM // ENGINEERING
+ *                         JONATHAN DI MARTINO
+ *                  Ingénieur Fullstack | Expert IA
+ *
+ * ============================================================================
+ *
+ * @file        ScrollZone.tsx
+ * @description Provides a bounded scroll region with a branded position indicator.
+ *
+ * @project     BlockyNotes
+ * @module      Components / UI
+ *
+ * @author      Ingénieur Jonathan DI MARTINO
+ * @created     2026-05-24
+ * @updated     2026-07-11
+ * @version     1.0.0
+ *
+ * @license     Proprietary
+ * @copyright   Copyright (c) 2026 Jonathan DI MARTINO
+ *
+ * @signature   JDM::FULLSTACK_AI_ENGINEERING
+ * ============================================================================
+ */
 import { ReactNode, useMemo, useState } from "react";
 import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, View } from "react-native";
 
